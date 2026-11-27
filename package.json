@@ -1,0 +1,17 @@
+{
+  "name": "sapporo-snow-festival-3d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "preview": "node build.mjs && node serve.mjs"
+  },
+  "dependencies": {
+    "3d-tiles-renderer": "^0.5.4",
+    "three": "^0.174.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

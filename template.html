@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPORO SNOW FESTIVAL 3D — Three.js PBR Cinema</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #070b14;
+      --card: #111827;
+      --card-border: rgba(148, 163, 184, 0.2);
+      --border: rgba(148, 163, 184, 0.28);
+      --foreground: #f1f5f9;
+      --muted-foreground: #94a3b8;
+      --primary: #38bdf8;
+      --primary-foreground: #082f49;
+      --secondary: #1e293b;
+      --secondary-foreground: #e2e8f0;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    }
+    canvas { display: block; touch-action: none; }
+    .cinema-bar { transition: height 320ms cubic-bezier(.22,1,.36,1); }
+    .ctrl-btn { transition: background-color 140ms ease, color 140ms ease, transform 90ms ease; cursor: pointer; }
+    .ctrl-btn:hover { filter: brightness(1.12); }
+    .ctrl-btn:active { transform: scale(0.96); }
+    @keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .rec-dot { animation: recPulse 1s infinite; }
+  </style>
+</head>
+<body class="antialiased select-none h-full">
+  <div class="h-full max-w-[1440px] mx-auto px-3 py-2.5 flex flex-col gap-2">
+    <!-- Top Scene Selector & Mode Bar -->
+    <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--card-border)] text-xs">
+      <div class="flex flex-wrap items-center gap-1.5" id="shot-bar">
+        <button data-shot="0" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">1. 大雪像・城</button>
+        <button data-shot="1" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">2. 大通パレード</button>
+        <button data-shot="2" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">3. テレビ塔</button>
+        <button data-shot="3" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">4. すすきの氷像</button>
+        <button data-shot="4" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">5. 赤れんが・駅</button>
+        <button data-shot="5" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">6. 藻岩山</button>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="btn-proj" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)]">マッピング: ON</button>
+        <button id="btn-time" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">トワイライト</button>
+        <button id="btn-cam" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">シネマ自動</button>
+        <a href="/plateau.html" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-sky-400/50 bg-sky-500/20 text-sky-200 font-medium no-underline">PLATEAU版 →</a>
+      </div>
+    </div>
+
+    <!-- Full-Height Three.js PBR 3D Cinema Viewport -->
+    <div id="stage-wrap" class="relative flex-1 min-h-[380px] w-full rounded-xl overflow-hidden border border-[var(--card-border)] bg-black shadow-2xl">
+      <!-- CinemaScope Letterbox Bars -->
+      <div id="bar-top" class="cinema-bar pointer-events-none absolute top-0 left-0 right-0 bg-black/95 h-5 z-10"></div>
+      <div id="bar-bot" class="cinema-bar pointer-events-none absolute bottom-0 left-0 right-0 bg-black/95 h-5 z-10"></div>
+
+      <!-- Subtle Cinema Title / Telemetry Overlay -->
+      <div class="pointer-events-none absolute top-7 left-4 right-4 z-20 flex items-start justify-between text-xs text-white/95 drop-shadow">
+        <div>
+          <div class="tracking-[0.22em] font-semibold text-sm" id="shot-title">SAPPORO SNOW FESTIVAL · GRAND CASTLE</div>
+          <div class="text-white/75 text-xs mt-0.5" id="shot-sub">大通4丁目 大雪像「白雪の大城郭」プロジェクションマッピング</div>
+        </div>
+        <div class="flex items-center gap-2 font-mono text-xs text-white/80">
+          <span id="rec-badge" class="hidden items-center gap-1 px-2 py-0.5 rounded bg-red-600/90 text-white font-semibold">
+            <span class="rec-dot inline-block w-1.5 h-1.5 rounded-full bg-white"></span>
+            <span id="rec-timer">REC 00:00</span>
+          </span>
+          <span id="fps-readout">60 FPS · Three.js</span>
+        </div>
+      </div>
+
+      <!-- Film Cut Fade Curtain -->
+      <div id="cut-fade" class="pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity duration-200 z-10"></div>
+    </div>
+
+    <!-- Bottom Transport & Controls -->
+    <div class="shrink-0 flex flex-wrap items-center justify-between gap-3 pt-0.5 text-xs text-[var(--muted-foreground)]">
+      <div class="flex items-center gap-2.5 flex-1 min-w-[220px]">
+        <button id="btn-play" class="ctrl-btn px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] font-medium">一時停止</button>
+        <input id="timeline" type="range" min="0" max="1000" value="0" class="flex-1 accent-[var(--primary)]" />
+        <span id="timecode" class="font-mono tabular-nums text-[var(--foreground)] w-11 text-right">00:00</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="flex items-center gap-1.5">
+          <span>雪</span>
+          <input id="sl-snow" type="range" min="0" max="100" value="68" class="w-20 accent-[var(--primary)]" />
+        </label>
+        <button id="btn-scope" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">2.39:1</button>
+        <button id="btn-rec" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">録画</button>
+        <button id="btn-fs" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">全画面</button>
+      </div>
+    </div>
+  </div>
+
+  <!--__BUNDLE__-->
+</body>
+</html>
