@@ -341,8 +341,12 @@ export function createSapporoRailNetwork(scene, mapGround) {
         ch.geometry.dispose();
       }
       if (ch.material && ch.material !== viaductConcreteMat && ch.material !== ballastMat && ch.material !== shelterGlassMat) {
-        if (Array.isArray(ch.material)) ch.material.forEach(m => m.dispose());
-        else if (!ch.userData?.keepMat) ch.material.dispose();
+        if (Array.isArray(ch.material)) {
+          ch.material.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+        } else if (!ch.userData?.keepMat) {
+          if (ch.material.map) ch.material.map.dispose();
+          ch.material.dispose();
+        }
       }
     }
 
@@ -774,15 +778,18 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   function syncVisibility() {
     rootGroup.visible = railMode !== 'off';
-    const showXrayPass = railMode === 'on'; // In 'xray' (glass ground) mode, solid underground trains shine directly!
+    // Keep GreaterDepth X-ray pass active in BOTH 'on' (through opaque ground) and 'xray' (through buildings above glass ground!)
+    const showXrayPass = railMode !== 'off';
     xrayCarIM.visible = showXrayPass;
     xrayHeadIM.visible = showXrayPass;
+    xrayCarMat.opacity = railMode === 'xray' ? 0.52 : 0.74;
 
     for (const entry of lineEntries) {
       const vis = isLineVisible(entry.spec);
       entry.infraGroup.visible = vis;
       if (entry.xrayRibbon) {
         entry.xrayRibbon.visible = vis && showXrayPass;
+        entry.xrayRibbon.material.opacity = railMode === 'xray' ? 0.28 : 0.36;
       }
     }
   }
@@ -825,7 +832,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
       }
     }
 
-    const showXrayPass = railMode === 'on';
+    const showXrayPass = railMode !== 'off';
 
     for (const entry of lineEntries) {
       const { spec, schedule, trains, totalLength } = entry;

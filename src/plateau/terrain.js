@@ -274,6 +274,28 @@ export function createRealScaleTerrain(scene, snowBumpMap) {
   scene.add(group);
 
   let lastSeason = 'winter';
+  let undergroundXray = false;
+
+  function setUndergroundXray(enabled) {
+    undergroundXray = Boolean(enabled);
+    cityGround.visible = !undergroundXray;
+    parkMat.transparent = undergroundXray;
+    parkMat.opacity = undergroundXray ? 0.30 : 1.0;
+    parkMat.depthWrite = !undergroundXray;
+    parkMat.needsUpdate = true;
+
+    riverMat.transparent = undergroundXray;
+    riverMat.opacity = undergroundXray ? 0.35 : 1.0;
+    riverMat.depthWrite = !undergroundXray;
+    riverMat.needsUpdate = true;
+
+    for (const rm of roadMats) {
+      rm.transparent = undergroundXray;
+      rm.opacity = undergroundXray ? 0.25 : 1.0;
+      rm.depthWrite = !undergroundXray;
+      rm.needsUpdate = true;
+    }
+  }
 
   function setSeasonAndWeather(season, weather) {
     const pal = SEASON_GROUND_COLORS[season] || SEASON_GROUND_COLORS.winter;
@@ -314,5 +336,6 @@ export function createRealScaleTerrain(scene, snowBumpMap) {
     snowMat: groundMat,
     moiwaPeak: new THREE.Vector3(moiwa.x, moiwaY, moiwa.z),
     setSeasonAndWeather,
+    setUndergroundXray,
   };
 }

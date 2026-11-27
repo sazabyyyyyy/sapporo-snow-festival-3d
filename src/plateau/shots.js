@@ -104,4 +104,27 @@ export const PLATEAU_SHOTS = [
       };
     },
   },
+  {
+    dur: 10.5,
+    title: 'SAPPORO RAIL & SUBWAY NETWORK · JR × 全3路線',
+    sub: 'JR札幌駅高架（函館・千歳・学園都市線）から大通直下の地下鉄3路線交差（南北・東西・東豊）へ',
+    eval(u) {
+      const t = smoother(u);
+      const jr = SAPPORO_POINTS.sapporoStation;
+      const odori = SAPPORO_POINTS.odoriNishi3;
+      return {
+        eye: [
+          lerp(jr.x - 240, odori.x + 260, t),
+          lerp(115, 165, t),
+          lerp(jr.z + 210, odori.z + 290, t),
+        ],
+        tgt: [
+          lerp(jr.x + 20, odori.x + 10, t),
+          lerp(12, -2, t),
+          lerp(jr.z, odori.z + 15, t),
+        ],
+        fov: lerp(46, 48, t),
+      };
+    },
+  },
 ];

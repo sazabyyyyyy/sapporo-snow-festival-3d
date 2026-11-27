@@ -146,6 +146,7 @@ export function createMapGroundLayer(scene, renderer) {
   let currentNight = 0.88;
   let currentSeason = 'winter';
   let currentWeather = 'snow';
+  let undergroundXray = false;
 
   const sharedTint = new THREE.Color(0xffffff);
   let sharedRoughness = 0.86;
@@ -157,6 +158,13 @@ export function createMapGroundLayer(scene, renderer) {
 
   let lastInnerCenter = '';
   let lastOuterCenter = '';
+
+  function applyXrayToMat(mat, isOuter) {
+    mat.transparent = undergroundXray;
+    mat.opacity = undergroundXray ? (isOuter ? 0.28 : 0.36) : 1.0;
+    mat.depthWrite = !undergroundXray;
+    mat.needsUpdate = true;
+  }
 
   function computeVisualParams() {
     // Smoothly darken bright daytime map/aerial tiles for twilight & night while keeping roads legible
@@ -179,11 +187,12 @@ export function createMapGroundLayer(scene, renderer) {
     sharedRoughness = currentWeather === 'rain' ? 0.26 : (currentStyle === 'photo' ? 0.84 : 0.90);
     sharedMetalness = currentWeather === 'rain' ? 0.28 : 0.04;
 
-    for (const map of [innerTiles, outerTiles]) {
+    for (const [map, isOuter] of [[innerTiles, false], [outerTiles, true]]) {
       for (const entry of map.values()) {
         entry.mat.color.copy(sharedTint);
         entry.mat.roughness = sharedRoughness;
         entry.mat.metalness = sharedMetalness;
+        applyXrayToMat(entry.mat, isOuter);
       }
     }
   }
@@ -219,6 +228,9 @@ export function createMapGroundLayer(scene, renderer) {
       color: sharedTint.clone(),
       roughness: sharedRoughness,
       metalness: sharedMetalness,
+      transparent: undergroundXray,
+      opacity: undergroundXray ? (isOuter ? 0.28 : 0.36) : 1.0,
+      depthWrite: !undergroundXray,
       polygonOffset: true,
       polygonOffsetFactor: isOuter ? 4 : 2,
       polygonOffsetUnits: isOuter ? 4 : 2,
@@ -354,18 +366,34 @@ export function createMapGroundLayer(scene, renderer) {
     computeVisualParams();
   }
 
+  function setUndergroundXray(enabled) {
+    const next = Boolean(enabled);
+    if (next === undergroundXray) return;
+    undergroundXray = next;
+    computeVisualParams();
+  }
+
   /**
    * Async real-elevation lookup (in local Three.js Y meters) for exact placement
-   * of the Current Location beacon or ward targets anywhere in Sapporo!
+   * of the Current Location beacon, railway tracks, or ward targets anywhere in Sapporo!
    */
-  async function getLocalElevationAt(lat, lon) {
-    const zDem = 14;
+  const _elevTmp = new THREE.Vector3();
+  async function getLocalElevationAt(lat, lon, zDem = 14) {
     const tx = Math.floor(lon2tileX(lon, zDem));
     const ty = Math.floor(lat2tileY(lat, zDem));
     const heights = await loadDemTile(zDem, tx, ty);
     if (!heights) return null;
     const elev = sampleDemHeight(heights, zDem, tx, ty, lat, lon);
-    return elev - ODORI_BASE_ELEVATION;
+    let localY = elev - ODORI_BASE_ELEVATION;
+    // Match central Odori Park flattening blend used on the ground tiles
+    latLonToGround(lat, lon, 0, _elevTmp);
+    const dOdori = Math.hypot((_elevTmp.x + 180) / 850, _elevTmp.z / 240);
+    if (dOdori < 1.3) {
+      const blend = Math.max(0, Math.min(1, (dOdori - 0.75) / 0.55));
+      const sm = blend * blend * (3 - 2 * blend);
+      localY = localY * sm;
+    }
+    return localY;
   }
 
   computeVisualParams();
@@ -376,6 +404,7 @@ export function createMapGroundLayer(scene, renderer) {
     setStyle,
     getStyle: () => currentStyle,
     setAtmosphere,
+    setUndergroundXray,
     getLocalElevationAt,
   };
 }

@@ -23,6 +23,8 @@ import { createPlateauCityManager } from './plateauTiles.js';
 import { createRealScaleTerrain } from './terrain.js';
 import { createMapGroundLayer, MAP_STYLES } from './mapGround.js';
 import { createPlateauFestivalOverlay } from './festivalOverlay.js';
+import { createSapporoRailNetwork } from './railNetwork.js';
+import { RAIL_VIEWPOINTS } from './railData.js';
 import { PLATEAU_SHOTS } from './shots.js';
 
 // ==================== DOM REFS ====================
@@ -45,6 +47,12 @@ const timecode = document.getElementById('timecode');
 const btnPlay = document.getElementById('btn-play');
 const btnLoc = document.getElementById('btn-loc');
 const btnLod = document.getElementById('btn-lod');
+const btnRail = document.getElementById('btn-rail');
+const btnRailPanel = document.getElementById('btn-rail-panel');
+const railPanel = document.getElementById('rail-panel');
+const btnRailXray = document.getElementById('btn-rail-xray');
+const railLineButtons = Array.from(document.querySelectorAll('#rail-line-toggles button[data-rail-line]'));
+const railViewButtons = Array.from(document.querySelectorAll('#rail-view-btns button[data-rail-view]'));
 const btnMap = document.getElementById('btn-map');
 const btnStyle = document.getElementById('btn-style');
 const btnProj = document.getElementById('btn-proj');
@@ -231,6 +239,7 @@ const plateauCity = createPlateauCityManager({
   winterUniforms,
 });
 const festivalOverlay = createPlateauFestivalOverlay(scene, snowBump, projMapping.texture);
+const railNetwork = createSapporoRailNetwork(scene, mapGround);
 
 // ==================== 3D CURRENT LOCATION BEACON MARKER ====================
 const locMarker = new THREE.Group();
@@ -815,6 +824,106 @@ btnLod.addEventListener('click', () => {
   btnLod.textContent = next === 'lod2' ? '札幌全10区: LOD2' : '札幌全10区: LOD1';
 });
 
+// ==================== SAPPORO SUBWAY & JR RAIL NETWORK CONTROLS ====================
+const RAIL_VIEW_BY_ID = Object.fromEntries(RAIL_VIEWPOINTS.map(v => [v.id, v]));
+const RAIL_LINE_STYLES = {
+  namboku: 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100',
+  tozai:   'border-amber-400/50 bg-amber-500/20 text-amber-100',
+  toho:    'border-sky-400/50 bg-sky-500/20 text-sky-100',
+  jr:      'border-green-400/50 bg-green-500/20 text-green-100',
+};
+
+function applyRailMode(mode) {
+  railNetwork.setMode(mode);
+  const isXray = mode === 'xray';
+  mapGround.setUndergroundXray(isXray);
+  terrain.setUndergroundXray(isXray);
+  controls.maxPolarAngle = isXray ? Math.PI * 0.56 : Math.PI * 0.49;
+
+  if (mode === 'on') {
+    btnRail.textContent = '🚇 鉄道: ON';
+    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-emerald-400/50 bg-emerald-500/20 text-emerald-200 font-medium';
+  } else if (mode === 'xray') {
+    btnRail.textContent = '🚇 地下透視';
+    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-cyan-400/60 bg-cyan-500/25 text-cyan-100 font-semibold';
+  } else {
+    btnRail.textContent = '🚇 鉄道: OFF';
+    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)]';
+  }
+
+  btnRailXray.textContent = isXray ? '地下透視: ON' : '地下透視: OFF';
+  btnRailXray.className = 'ctrl-btn px-1.5 py-0.5 rounded border text-[10px] ' + (
+    isXray
+      ? 'border-cyan-300 bg-cyan-400/30 text-white font-semibold'
+      : 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
+  );
+}
+
+const RAIL_MODE_ORDER = ['on', 'xray', 'off'];
+btnRail.addEventListener('click', () => {
+  const cur = railNetwork.getMode();
+  const next = RAIL_MODE_ORDER[(RAIL_MODE_ORDER.indexOf(cur) + 1) % RAIL_MODE_ORDER.length];
+  applyRailMode(next);
+});
+
+btnRailXray.addEventListener('click', ev => {
+  ev.stopPropagation();
+  const next = railNetwork.getMode() === 'xray' ? 'on' : 'xray';
+  applyRailMode(next);
+});
+
+let railPanelVisible = true;
+btnRailPanel.addEventListener('click', ev => {
+  ev.stopPropagation();
+  railPanelVisible = !railPanelVisible;
+  railPanel.classList.toggle('hidden', !railPanelVisible);
+  btnRailPanel.textContent = railPanelVisible ? '🚆 地下鉄・JR 路線' : '🚆 路線パネルを表示';
+});
+
+railLineButtons.forEach(btn => {
+  const key = btn.dataset.railLine;
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const state = railNetwork.getLineEnabled();
+    const next = !state[key];
+    railNetwork.setLineEnabled(key, next);
+    if (railNetwork.getMode() === 'off' && next) {
+      applyRailMode('on');
+    }
+    btn.className = 'ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border text-left ' + (
+      next
+        ? RAIL_LINE_STYLES[key]
+        : 'border-white/10 bg-slate-900/70 text-slate-500 opacity-60'
+    );
+  });
+});
+
+railViewButtons.forEach(btn => {
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const v = RAIL_VIEW_BY_ID[btn.dataset.railView];
+    if (!v) return;
+    if (railNetwork.getMode() === 'off') applyRailMode('on');
+    if (v.suggestXray) applyRailMode('xray');
+    else if (railNetwork.getMode() === 'xray') applyRailMode('on');
+
+    activeWardId = null;
+    activeLocationInfo = { title: v.title, sub: v.sub };
+    freeCam = true;
+    controls.enabled = true;
+    btnCam.textContent = '自由ドローン';
+    flyAnim = {
+      startPos: camera.position.clone(),
+      startTgt: controls.target.clone(),
+      endPos: v.eye.clone(),
+      endTgt: v.tgt.clone(),
+      t: 0,
+      dur: 1.05,
+    };
+    updateShotUI(0);
+  });
+});
+
 const MAP_STYLE_ORDER = ['std', 'photo', 'pale'];
 btnMap.addEventListener('click', () => {
   const idx = (MAP_STYLE_ORDER.indexOf(mapGround.getStyle()) + 1) % MAP_STYLE_ORDER.length;
@@ -1160,6 +1269,7 @@ function animate(ts) {
   }
 
   festivalOverlay.update(clockTime, env.night, env.clock, projEnabled);
+  railNetwork.update(clockTime, env.night, camera.position);
   updatePrecipitation(dt, clockTime, camera.position, snowAmount, activeWeather, activeSeason);
 
   // HUD updates (~5Hz for tile telemetry, every frame for timeline)
