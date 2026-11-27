@@ -25,11 +25,10 @@ import { createMapGroundLayer, MAP_STYLES } from './mapGround.js';
 import { createPlateauFestivalOverlay } from './festivalOverlay.js';
 import { createSapporoRailNetwork } from './railNetwork.js';
 import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
-import { PLATEAU_SHOTS } from './shots.js';
+import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
 
 // ==================== DOM REFS ====================
 const wrap = document.getElementById('stage-wrap');
-const shotButtons = Array.from(document.querySelectorAll('#shot-bar button[data-shot]'));
 const wardButtons = Array.from(document.querySelectorAll('#ward-bar button[data-ward]'));
 const timeButtons = Array.from(document.querySelectorAll('#time-bar button[data-time]'));
 const seasonButtons = Array.from(document.querySelectorAll('#season-bar button[data-season]'));
@@ -607,7 +606,6 @@ let snowAmount = 0.08;
 let whiteModelMode = false;
 let clockTime = 0;
 let activeWardId = null;
-let activeShotIdx = null;
 let activeLocationInfo = null;
 let flyAnim = null; // Smooth camera fly-to when choosing a ward / station / preset
 
@@ -615,27 +613,54 @@ const WARD_BY_ID = Object.fromEntries(SAPPORO_WARD_VIEWS.map(w => [w.id, w]));
 
 applyAtmosphere(TIME_PRESETS[timeIdx]);
 
-// Default free-drone framing over Chuo / Odori
+/**
+ * Opening shot: descend from high altitude into a gentle overhead view of
+ * Odori Park / TV Tower (matches the default free-drone framing users expect).
+ */
+const INTRO_LAND_TGT = (() => {
+  const t = SAPPORO_POINTS.odoriNishi3.clone();
+  t.y = 24;
+  return t;
+})();
+const INTRO_LAND_EYE = new THREE.Vector3(
+  SAPPORO_POINTS.tvTower.x + 60,
+  520,
+  SAPPORO_POINTS.tvTower.z + 640
+);
+const INTRO_SKY_EYE = new THREE.Vector3(
+  INTRO_LAND_EYE.x - 180,
+  2600,
+  INTRO_LAND_EYE.z + 120
+);
+const INTRO_SKY_TGT = INTRO_LAND_TGT.clone().setY(180);
+
+let introActive = true;
+let onIntroComplete = null;
+
 {
-  const startView = WARD_BY_ID.chuo;
-  camera.position.copy(startView.eye);
-  controls.target.copy(startView.tgt);
-  controls.enabled = true;
+  camera.position.copy(INTRO_SKY_EYE);
+  controls.target.copy(INTRO_SKY_TGT);
+  camera.lookAt(controls.target);
+  controls.enabled = false;
   updateHudTitle();
+
+  flyAnim = {
+    startPos: INTRO_SKY_EYE.clone(),
+    startTgt: INTRO_SKY_TGT.clone(),
+    endPos: INTRO_LAND_EYE.clone(),
+    endTgt: INTRO_LAND_TGT.clone(),
+    t: 0,
+    dur: 3.2,
+    ease: 'inOut',
+    unlockControls: true,
+    isIntro: true,
+  };
 }
 
 function updateWardUI() {
   wardButtons.forEach(b => {
     b.className = 'ctrl-btn chip' + (b.dataset.ward === activeWardId ? ' on' : '');
   });
-}
-
-function updateShotUI() {
-  shotButtons.forEach((b, i) => {
-    b.className = 'ctrl-btn chip text-left' + (i === activeShotIdx ? ' on' : '');
-  });
-  updateWardUI();
-  updateHudTitle();
 }
 
 function updateHudTitle() {
@@ -650,20 +675,19 @@ function updateHudTitle() {
     shotSub.textContent = `${w.area} — ドラッグ回転・ホイールズーム・右ドラッグ移動`;
     return;
   }
-  if (activeShotIdx != null && PLATEAU_SHOTS[activeShotIdx]) {
-    shotTitle.textContent = PLATEAU_SHOTS[activeShotIdx].title;
-    shotSub.textContent = PLATEAU_SHOTS[activeShotIdx].sub;
-    return;
-  }
   shotTitle.textContent = 'FREE DRONE CAMERA · PLATEAU SAPPORO';
   shotSub.textContent = '実寸PLATEAU札幌市街を自由飛行 — ドラッグ回転・ホイールズーム・右ドラッグ移動';
+}
+
+function refreshChromeUI() {
+  updateWardUI();
+  updateHudTitle();
 }
 
 function flyToWard(wardId) {
   const w = WARD_BY_ID[wardId];
   if (!w) return;
   activeLocationInfo = null;
-  activeShotIdx = null;
   activeWardId = wardId;
   setUiChromeOpen?.(false);
   controls.enabled = true;
@@ -675,7 +699,7 @@ function flyToWard(wardId) {
     t: 0,
     dur: 1.05,
   };
-  updateShotUI();
+  refreshChromeUI();
 }
 
 function requestCurrentLocation() {
@@ -700,7 +724,7 @@ function requestCurrentLocation() {
           sub: `現在地（${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E）は札幌市の表示範囲外です — 札幌10区ボタンから地域を選べます`,
         };
         controls.enabled = true;
-        updateShotUI();
+        refreshChromeUI();
         return;
       }
 
@@ -734,7 +758,7 @@ function requestCurrentLocation() {
         t: 0,
         dur: 1.1,
       };
-      updateShotUI();
+      refreshChromeUI();
     },
     err => {
       btnLoc.textContent = '📍 現在地';
@@ -749,7 +773,7 @@ function requestCurrentLocation() {
         sub: msg,
       };
       controls.enabled = true;
-      updateShotUI();
+      refreshChromeUI();
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
@@ -760,31 +784,6 @@ function triggerCutFlash() {
   setTimeout(() => { cutFade.style.opacity = '0'; }, 90);
 }
 
-shotButtons.forEach((btn, idx) => {
-  btn.addEventListener('click', () => {
-    const shot = PLATEAU_SHOTS[idx];
-    if (!shot) return;
-    const cam = shot.eval(0.42);
-    activeWardId = null;
-    activeShotIdx = idx;
-    activeLocationInfo = { title: shot.title, sub: shot.sub };
-    controls.enabled = true;
-    flyAnim = {
-      startPos: camera.position.clone(),
-      startTgt: controls.target.clone(),
-      endPos: new THREE.Vector3(...cam.eye),
-      endTgt: new THREE.Vector3(...cam.tgt),
-      t: 0,
-      dur: 1.15,
-    };
-    if (Number.isFinite(cam.fov) && Math.abs(camera.fov - cam.fov) > 0.05) {
-      camera.fov = cam.fov;
-      camera.updateProjectionMatrix();
-    }
-    triggerCutFlash();
-    updateShotUI();
-  });
-});
 
 btnLoc.addEventListener('click', requestCurrentLocation);
 
@@ -845,13 +844,16 @@ btnRailXray.addEventListener('click', ev => {
 });
 
 let railPanelVisible = false;
+function setRailPanelOpen(open) {
+  railPanelVisible = Boolean(open);
+  railPanel?.classList.toggle('hidden', !railPanelVisible);
+  btnRailPanel?.classList.toggle('soft-on', railPanelVisible);
+  if (btnRailPanel) btnRailPanel.textContent = '🚆 路線';
+  if (railPanelVisible) closeAllMenus();
+}
 btnRailPanel.addEventListener('click', ev => {
   ev.stopPropagation();
-  railPanelVisible = !railPanelVisible;
-  railPanel.classList.toggle('hidden', !railPanelVisible);
-  btnRailPanel.classList.toggle('soft-on', railPanelVisible);
-  btnRailPanel.textContent = '🚆 路線';
-  if (railPanelVisible) closeAllMenus();
+  setRailPanelOpen(!railPanelVisible);
 });
 
 railLineButtons.forEach(btn => {
@@ -882,7 +884,6 @@ railViewButtons.forEach(btn => {
     else if (railNetwork.getMode() === 'xray') applyRailMode('on');
 
     activeWardId = null;
-    activeShotIdx = null;
     activeLocationInfo = { title: v.title, sub: v.sub };
     controls.enabled = true;
     flyAnim = {
@@ -893,7 +894,7 @@ railViewButtons.forEach(btn => {
       t: 0,
       dur: 1.05,
     };
-    updateShotUI();
+    refreshChromeUI();
   });
 });
 
@@ -1027,6 +1028,11 @@ const _camOffset = new THREE.Vector3();
 const _camSph = new THREE.Spherical();
 
 function ensureFreeCamForPad() {
+  if (flyAnim?.isIntro) {
+    introActive = false;
+    onIntroComplete?.();
+    onIntroComplete = null;
+  }
   flyAnim = null;
   controls.enabled = true;
 }
@@ -1149,18 +1155,31 @@ document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
 });
 
 document.addEventListener('click', ev => {
+  if (ev.target.closest('#tutorial-root')) return;
   if (ev.target.closest('#ui-chrome') || ev.target.closest('#btn-ui-toggle')) return;
   if (ev.target.closest('#rail-panel') || ev.target.closest('#cam-pad')) return;
   setUiChromeOpen(false);
 });
 
-// Choosing a shot / ward should tuck menus away for a larger map
-shotButtons.forEach(btn => {
-  btn.addEventListener('click', () => {
-    closeAllMenus();
-    setUiChromeOpen(false);
-  });
+const tutorial = initTutorial({
+  steps: PLATEAU_TUTORIAL_STEPS,
+  storageKey: 'plateau-tutorial-v1-done',
+  setUiChromeOpen,
+  openRailPanel: setRailPanelOpen,
+  deferAutoStart: true,
 });
+
+document.getElementById('btn-guide')?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  setUiChromeOpen(false);
+  tutorial.open();
+});
+
+// Begin the guide after the opening sky-descent (or immediately if already skipped)
+onIntroComplete = () => tutorial.startIfNeeded(450);
+if (!introActive) tutorial.startIfNeeded(450);
+
+// Choosing a ward should tuck menus away for a larger map
 wardButtons.forEach(btn => {
   btn.addEventListener('click', () => {
     closeAllMenus();
@@ -1199,7 +1218,6 @@ function flyToStationView(view) {
   else if (railNetwork.getMode() === 'xray' && !view.suggestXray) applyRailMode('on');
 
   activeWardId = null;
-  activeShotIdx = null;
   activeLocationInfo = { title: view.title, sub: view.sub };
   controls.enabled = true;
   flyAnim = {
@@ -1210,7 +1228,7 @@ function flyToStationView(view) {
     t: 0,
     dur: 1.15,
   };
-  updateShotUI();
+  refreshChromeUI();
 
   cutFade.style.opacity = '0.35';
   setTimeout(() => { cutFade.style.opacity = '0'; }, 90);
@@ -1228,7 +1246,13 @@ function flyToStationMeta(meta) {
 
 renderer.domElement.addEventListener('pointerdown', ev => {
   ptrGesture = { x: ev.clientX, y: ev.clientY, t: performance.now() };
-  flyAnim = null; // Immediately yield control to user drag
+  // Skip / take over the opening descent if the user grabs the camera
+  if (flyAnim?.isIntro) {
+    introActive = false;
+    onIntroComplete?.();
+    onIntroComplete = null;
+  }
+  flyAnim = null;
   controls.enabled = true;
 });
 
@@ -1393,11 +1417,23 @@ function animate(ts) {
   // Camera update (always interactive free-drone; optional fly-to animation)
   if (flyAnim) {
     flyAnim.t = Math.min(1, flyAnim.t + dt / flyAnim.dur);
-    const e = 1 - Math.pow(1 - flyAnim.t, 3); // Ease-out cubic
+    const u = flyAnim.t;
+    const e = flyAnim.ease === 'inOut'
+      ? (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2) // ease-in-out cubic
+      : 1 - Math.pow(1 - u, 3); // ease-out cubic
     camera.position.lerpVectors(flyAnim.startPos, flyAnim.endPos, e);
     controls.target.lerpVectors(flyAnim.startTgt, flyAnim.endTgt, e);
     camera.lookAt(controls.target);
-    if (flyAnim.t >= 1) flyAnim = null;
+    if (flyAnim.t >= 1) {
+      const finished = flyAnim;
+      flyAnim = null;
+      if (finished.unlockControls) controls.enabled = true;
+      if (finished.isIntro) {
+        introActive = false;
+        onIntroComplete?.();
+        onIntroComplete = null;
+      }
+    }
   } else {
     controls.update();
   }
@@ -1461,5 +1497,5 @@ function animate(ts) {
   composer.render();
 }
 
-updateShotUI();
+refreshChromeUI();
 requestAnimationFrame(animate);

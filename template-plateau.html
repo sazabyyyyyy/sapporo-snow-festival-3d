@@ -215,6 +215,121 @@
       .hide-sm { display: none !important; }
       .menu-panel { min-width: 180px; }
     }
+
+    /* ===== Guided tutorial ===== */
+    #tutorial-root {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      pointer-events: none;
+    }
+    #tutorial-root.open { display: block; }
+    .tutorial-backdrop {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(2, 8, 20, 0.28), rgba(2, 8, 20, 0.62));
+      pointer-events: auto;
+    }
+    .tutorial-spotlight {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      border-radius: 12px;
+      border: 2px solid rgba(56, 189, 248, 0.95);
+      box-shadow: 0 0 0 9999px rgba(2, 8, 20, 0.52), 0 0 24px rgba(56, 189, 248, 0.4);
+      opacity: 0;
+      transition: opacity 180ms ease, width 180ms ease, height 180ms ease, left 180ms ease, top 180ms ease, border-radius 180ms ease;
+      pointer-events: none;
+      z-index: 81;
+    }
+    .tutorial-spotlight.secondary {
+      /* Extra focus rings without stacking another full-screen dim */
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.55);
+      border-color: rgba(125, 211, 252, 0.95);
+      z-index: 82;
+    }
+    .tutorial-card.place-left {
+      left: 0.7rem;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .tutorial-card {
+      position: absolute;
+      z-index: 82;
+      width: min(360px, calc(100vw - 1.5rem));
+      padding: 1rem 1.05rem 0.9rem;
+      border-radius: 14px;
+      background: rgba(8, 16, 30, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: #e8eef7;
+      pointer-events: auto;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+    .tutorial-card.place-center {
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .tutorial-card.place-bottom {
+      left: 50%;
+      bottom: 4.8rem;
+      transform: translateX(-50%);
+    }
+    .tutorial-card.place-below {
+      left: 0.7rem;
+      top: 3.4rem;
+      transform: none;
+    }
+    .tutorial-kicker {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7dd3fc;
+      margin-bottom: 0.35rem;
+    }
+    .tutorial-card h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      line-height: 1.35;
+      margin: 0 0 0.45rem;
+      color: #f8fafc;
+    }
+    .tutorial-card p {
+      font-size: 0.86rem;
+      line-height: 1.65;
+      color: rgba(226, 232, 240, 0.88);
+      margin: 0 0 0.55rem;
+      font-weight: 300;
+    }
+    .tutorial-hint {
+      font-size: 0.72rem;
+      color: rgba(148, 163, 184, 0.95);
+      margin-bottom: 0.85rem;
+    }
+    .tutorial-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .tutorial-actions .spacer { flex: 1; }
+    .tutorial-pulse {
+      position: relative;
+      z-index: 83 !important;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.85), 0 0 18px rgba(56, 189, 248, 0.35) !important;
+    }
+    @media (max-width: 640px) {
+      .tutorial-card.place-below {
+        left: 50%;
+        top: auto;
+        bottom: 4.8rem;
+        transform: translateX(-50%);
+      }
+    }
   </style>
 </head>
 <body class="antialiased select-none h-full">
@@ -232,23 +347,7 @@
 
         <div id="ui-chrome">
           <div class="glass rounded-lg px-1.5 py-1 flex flex-wrap items-center gap-1 max-w-full">
-            <a href="/index.html" class="chip no-underline text-slate-300">←</a>
-
-            <div class="menu" data-menu>
-              <button type="button" class="chip menu-toggle" data-menu-toggle>視点</button>
-              <div class="menu-panel glass" id="shot-bar">
-                <div class="menu-title">View Presets</div>
-                <div class="menu-grid">
-                  <button data-shot="0" class="ctrl-btn chip text-left">1. 大雪像・城</button>
-                  <button data-shot="1" class="ctrl-btn chip text-left">2. 大通パレード</button>
-                  <button data-shot="2" class="ctrl-btn chip text-left">3. テレビ塔</button>
-                  <button data-shot="3" class="ctrl-btn chip text-left">4. すすきの氷像</button>
-                  <button data-shot="4" class="ctrl-btn chip text-left">5. 赤れんが・駅</button>
-                  <button data-shot="5" class="ctrl-btn chip text-left">6. 藻岩山</button>
-                  <button data-shot="6" class="ctrl-btn chip text-left">7. 鉄道・地下鉄</button>
-                </div>
-              </div>
-            </div>
+            <a href="/index.html" id="link-festival" class="chip no-underline text-slate-200" title="雪まつりのシネマ演出へ">雪まつり版</a>
 
             <div class="menu" data-menu>
               <button type="button" class="chip menu-toggle" data-menu-toggle>移動</button>
@@ -313,6 +412,7 @@
 
             <button id="btn-rail-panel" class="chip">🚆 路線</button>
             <button id="btn-pad-toggle" class="chip">🎮</button>
+            <button id="btn-guide" class="chip" title="操作ガイド">？</button>
             <button id="btn-scope" class="chip hide-sm">2.39</button>
             <button id="btn-fs" class="chip">全画面</button>
           </div>
@@ -429,6 +529,25 @@
           <input id="sl-snow" type="range" min="0" max="100" value="8" />
         </label>
         <button id="btn-rec" class="chip shrink-0">録画</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run / replayable tutorial -->
+  <div id="tutorial-root" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+    <div class="tutorial-backdrop"></div>
+    <div class="tutorial-spotlight" data-tut-spot="0" aria-hidden="true"></div>
+    <div class="tutorial-spotlight secondary" data-tut-spot="1" aria-hidden="true"></div>
+    <div class="tutorial-card place-center">
+      <div class="tutorial-kicker">Guide · <span data-tut-step>1 / 7</span></div>
+      <h2 id="tutorial-title" data-tut-title>札幌を自由に歩けます</h2>
+      <p data-tut-body>この画面は、国交省 Project PLATEAU の実在都市データでつくった札幌の3Dマップです。</p>
+      <div class="tutorial-hint" data-tut-hint>約30秒の短いガイドです</div>
+      <div class="tutorial-actions">
+        <button type="button" class="chip" data-tut-skip>スキップ</button>
+        <span class="spacer"></span>
+        <button type="button" class="chip" data-tut-prev>戻る</button>
+        <button type="button" class="chip on" data-tut-next>次へ</button>
       </div>
     </div>
   </div>

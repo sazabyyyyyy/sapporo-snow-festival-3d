@@ -33,6 +33,131 @@
     .ctrl-btn:active { transform: scale(0.96); }
     @keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
     .rec-dot { animation: recPulse 1s infinite; }
+
+    /* ===== Guided tutorial ===== */
+    #tutorial-root {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      pointer-events: none;
+    }
+    #tutorial-root.open { display: block; }
+    .tutorial-backdrop {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(2, 8, 20, 0.28), rgba(2, 8, 20, 0.62));
+      pointer-events: auto;
+    }
+    .tutorial-spotlight {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      border-radius: 12px;
+      border: 2px solid rgba(56, 189, 248, 0.95);
+      box-shadow: 0 0 0 9999px rgba(2, 8, 20, 0.52), 0 0 24px rgba(56, 189, 248, 0.4);
+      opacity: 0;
+      transition: opacity 180ms ease, width 180ms ease, height 180ms ease, left 180ms ease, top 180ms ease, border-radius 180ms ease;
+      pointer-events: none;
+      z-index: 81;
+    }
+    .tutorial-spotlight.secondary {
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.55);
+      border-color: rgba(125, 211, 252, 0.95);
+      z-index: 82;
+    }
+    .tutorial-card {
+      position: absolute;
+      z-index: 82;
+      width: min(360px, calc(100vw - 1.5rem));
+      padding: 1rem 1.05rem 0.9rem;
+      border-radius: 14px;
+      background: rgba(8, 16, 30, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: #e8eef7;
+      pointer-events: auto;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+    .tutorial-card.place-center {
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .tutorial-card.place-bottom {
+      left: 50%;
+      bottom: 4.8rem;
+      transform: translateX(-50%);
+    }
+    .tutorial-card.place-below {
+      left: 0.7rem;
+      top: 3.4rem;
+      transform: none;
+    }
+    .tutorial-kicker {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7dd3fc;
+      margin-bottom: 0.35rem;
+    }
+    .tutorial-card h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      line-height: 1.35;
+      margin: 0 0 0.45rem;
+      color: #f8fafc;
+    }
+    .tutorial-card p {
+      font-size: 0.86rem;
+      line-height: 1.65;
+      color: rgba(226, 232, 240, 0.88);
+      margin: 0 0 0.55rem;
+      font-weight: 300;
+    }
+    .tutorial-hint {
+      font-size: 0.72rem;
+      color: rgba(148, 163, 184, 0.95);
+      margin-bottom: 0.85rem;
+    }
+    .tutorial-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .tutorial-actions .spacer { flex: 1; }
+    .tutorial-pulse {
+      position: relative;
+      z-index: 83 !important;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.85), 0 0 18px rgba(56, 189, 248, 0.35) !important;
+    }
+    .chip {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--foreground);
+      border-radius: 7px;
+      padding: 0.35rem 0.65rem;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .chip.on {
+      background: var(--primary);
+      border-color: #7dd3fc;
+      color: var(--primary-foreground);
+      font-weight: 600;
+    }
+    @media (max-width: 640px) {
+      .tutorial-card.place-below {
+        left: 50%;
+        top: auto;
+        bottom: 4.8rem;
+        transform: translateX(-50%);
+      }
+    }
   </style>
 </head>
 <body class="antialiased select-none h-full">
@@ -51,7 +176,8 @@
         <button id="btn-proj" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)]">マッピング: ON</button>
         <button id="btn-time" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">トワイライト</button>
         <button id="btn-cam" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">シネマ自動</button>
-        <a href="/plateau.html" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-sky-400/50 bg-sky-500/20 text-sky-200 font-medium no-underline">PLATEAU版 →</a>
+        <button id="btn-guide" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]" title="操作ガイド">？</button>
+        <a href="/plateau.html" id="link-plateau" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-sky-400/50 bg-sky-500/20 text-sky-200 font-medium no-underline" title="実在都市データで札幌全市を自由飛行">PLATEAU実寸マップ</a>
       </div>
     </div>
 
@@ -95,6 +221,25 @@
         <button id="btn-scope" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">2.39:1</button>
         <button id="btn-rec" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">録画</button>
         <button id="btn-fs" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">全画面</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run / replayable tutorial -->
+  <div id="tutorial-root" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+    <div class="tutorial-backdrop"></div>
+    <div class="tutorial-spotlight" data-tut-spot="0" aria-hidden="true"></div>
+    <div class="tutorial-spotlight secondary" data-tut-spot="1" aria-hidden="true"></div>
+    <div class="tutorial-card place-center">
+      <div class="tutorial-kicker">Guide · <span data-tut-step>1 / 7</span></div>
+      <h2 id="tutorial-title" data-tut-title>雪まつりのシネマ体験</h2>
+      <p data-tut-body>ここは札幌雪まつりをイメージした3Dシネマモードです。</p>
+      <div class="tutorial-hint" data-tut-hint>約30秒の短いガイドです</div>
+      <div class="tutorial-actions">
+        <button type="button" class="chip" data-tut-skip>スキップ</button>
+        <span class="spacer"></span>
+        <button type="button" class="chip" data-tut-prev>戻る</button>
+        <button type="button" class="chip on" data-tut-next>次へ</button>
       </div>
     </div>
   </div>

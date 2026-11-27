@@ -13,6 +13,7 @@ import {
 } from './textures.js';
 import { createSapporoCity } from './sapporoCity.js';
 import { createSnowFestivalZone } from './snowSculptures.js';
+import { initTutorial, FESTIVAL_TUTORIAL_STEPS } from './plateau/tutorial.js';
 
 // ==================== DOM REFS ====================
 const wrap = document.getElementById('stage-wrap');
@@ -650,4 +651,14 @@ function animate(ts) {
 }
 
 updateShotUI(0);
+
+const festivalTutorial = initTutorial({
+  steps: FESTIVAL_TUTORIAL_STEPS,
+  storageKey: 'festival-tutorial-v1-done',
+});
+document.getElementById('btn-guide')?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  festivalTutorial.open();
+});
+
 requestAnimationFrame(animate);
