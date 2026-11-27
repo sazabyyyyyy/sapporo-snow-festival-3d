@@ -8,8 +8,8 @@
   <style>
     :root {
       --background: #070b14;
-      --card: #111827;
-      --card-border: rgba(148, 163, 184, 0.2);
+      --card: rgba(15, 23, 42, 0.82);
+      --card-border: rgba(148, 163, 184, 0.22);
       --border: rgba(148, 163, 184, 0.28);
       --foreground: #f1f5f9;
       --muted-foreground: #94a3b8;
@@ -22,9 +22,10 @@
       height: 100%;
       margin: 0;
       padding: 0;
-      background: var(--background);
+      background: #000;
       color: var(--foreground);
       font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      overflow: hidden;
     }
     canvas { display: block; touch-action: none; }
     .cinema-bar { transition: height 320ms cubic-bezier(.22,1,.36,1); }
@@ -33,195 +34,401 @@
     .ctrl-btn:active { transform: scale(0.96); }
     @keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
     .rec-dot { animation: recPulse 1s infinite; }
+
+    #app-shell {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #stage-wrap {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .glass {
+      background: rgba(8, 15, 28, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .chip {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(15, 23, 42, 0.72);
+      color: #e2e8f0;
+      border-radius: 7px;
+      padding: 0.28rem 0.55rem;
+      font-size: 11px;
+      line-height: 1.2;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .chip:hover { border-color: rgba(255, 255, 255, 0.28); }
+    .chip.on, .ctrl-btn.on {
+      background: rgba(56, 189, 248, 0.88);
+      border-color: rgba(125, 211, 252, 0.9);
+      color: #082f49;
+      font-weight: 600;
+    }
+    .chip.soft-on {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: rgba(56, 189, 248, 0.45);
+      color: #bae6fd;
+      font-weight: 600;
+    }
+    .seg .ctrl-btn.on {
+      background: rgba(56, 189, 248, 0.92);
+      color: #082f49;
+    }
+
+    .top-bar, .bot-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 40;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.45rem;
+      padding: 0.4rem 0.55rem;
+      pointer-events: none;
+    }
+    .top-bar { top: 0; }
+    .bot-bar {
+      bottom: 0;
+      align-items: center;
+    }
+    .top-bar > *, .bot-bar > * { pointer-events: auto; }
+
+    .ui-fab {
+      opacity: 0.55;
+      background: rgba(8, 15, 28, 0.42) !important;
+      border-color: rgba(255, 255, 255, 0.10) !important;
+      color: rgba(226, 232, 240, 0.88) !important;
+      box-shadow: none;
+    }
+    .ui-fab:hover, .ui-fab.open {
+      opacity: 0.95;
+      background: rgba(8, 15, 28, 0.78) !important;
+      border-color: rgba(255, 255, 255, 0.22) !important;
+    }
+    #ui-chrome {
+      display: none;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      max-width: calc(100vw - 3.2rem);
+      animation: chromeIn 160ms ease;
+    }
+    #ui-chrome.open { display: flex; }
+    @keyframes chromeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .bot-bar .glass {
+      opacity: 0.72;
+    }
+    .bot-bar .glass:hover, .bot-bar .glass:focus-within {
+      opacity: 0.95;
+    }
+
+    .menu { position: relative; }
+    .menu-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 196px;
+      max-width: min(92vw, 320px);
+      padding: 0.5rem;
+      border-radius: 10px;
+      z-index: 50;
+      display: none;
+    }
+    .menu-panel.open { display: block; }
+    .menu-panel.right { left: auto; right: 0; }
+    .menu-title {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.9);
+      margin-bottom: 0.35rem;
+    }
+    .menu-grid {
+      display: grid;
+      gap: 0.28rem;
+    }
+    .menu-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    .menu-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .menu-grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+    .seg {
+      display: inline-flex;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.72);
+    }
+    .seg .ctrl-btn, .seg .chip {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0.28rem 0.48rem;
+      font-size: 11px;
+    }
+
+    .hud-title {
+      pointer-events: none;
+      position: absolute;
+      top: 2.55rem;
+      left: 0.7rem;
+      right: 0.7rem;
+      z-index: 25;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.6rem;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.65);
+      opacity: 0.82;
+    }
+
+    #station-list {
+      max-height: 132px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+    }
+    #station-list::-webkit-scrollbar { width: 5px; }
+    #station-list::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 999px;
+    }
+    .station-item.active {
+      border-color: rgba(56, 189, 248, 0.65) !important;
+      background: rgba(14, 165, 233, 0.22) !important;
+      color: #e0f2fe !important;
+    }
+
+    #sl-snow { accent-color: var(--primary); width: 88px; height: 18px; }
+
+    @media (max-width: 820px) {
+      .hide-sm { display: none !important; }
+      .menu-panel { min-width: 180px; }
+    }
   </style>
 </head>
 <body class="antialiased select-none h-full">
-  <div class="h-full max-w-[1440px] mx-auto px-3 py-2.5 flex flex-col gap-2">
-    <!-- Top Scene Selector & PLATEAU Mode Bar -->
-    <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--card-border)] text-xs">
-      <div class="flex flex-wrap items-center gap-1.5" id="shot-bar">
-        <a href="/index.html" class="ctrl-btn px-2 py-1.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-white no-underline">← 通常版</a>
-        <button data-shot="0" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">1. 大雪像・城</button>
-        <button data-shot="1" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">2. 大通パレード</button>
-        <button data-shot="2" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">3. テレビ塔</button>
-        <button data-shot="3" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">4. すすきの氷像</button>
-        <button data-shot="4" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">5. 赤れんが・駅</button>
-        <button data-shot="5" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">6. 藻岩山</button>
-        <button data-shot="6" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">7. 鉄道・地下鉄</button>
-      </div>
-      <div class="flex flex-wrap items-center gap-1.5">
-        <button id="btn-lod" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-sky-400/50 bg-sky-500/20 text-sky-200 font-medium">札幌全10区: LOD2</button>
-        <button id="btn-rail" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-emerald-400/50 bg-emerald-500/20 text-emerald-200 font-medium">🚇 鉄道: ON</button>
-        <button id="btn-map" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-amber-400/40 bg-amber-500/15 text-amber-200 font-medium">🗺 道路地図</button>
-        <button id="btn-style" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">リアル質感</button>
-        <button id="btn-proj" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)]">マッピング: ON</button>
-        <div class="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--card)] overflow-hidden" id="time-bar">
-          <button data-time="0" class="ctrl-btn px-2 py-1.5 bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">夕方</button>
-          <button data-time="1" class="ctrl-btn px-2 py-1.5 text-[var(--foreground)]">夜景</button>
-          <button data-time="2" class="ctrl-btn px-2 py-1.5 text-[var(--foreground)]">昼</button>
-          <button data-time="3" class="ctrl-btn px-2 py-1.5 text-[var(--foreground)]">朝</button>
-        </div>
-        <button id="btn-cam" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">シネマ自動</button>
-      </div>
-    </div>
-
-    <!-- All 10 Sapporo Wards Quick-Jump + Current Location + Season & Weather Bar -->
-    <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 text-xs">
-      <div class="flex flex-wrap items-center gap-1" id="ward-bar">
-        <button id="btn-loc" class="ctrl-btn px-2 py-1 rounded border border-emerald-400/50 bg-emerald-500/20 text-emerald-200 font-medium">📍 現在地</button>
-        <span class="text-[var(--muted-foreground)] font-medium ml-1 mr-0.5">10区:</span>
-        <button data-ward="chuo" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">中央</button>
-        <button data-ward="kita" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">北</button>
-        <button data-ward="higashi" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">東</button>
-        <button data-ward="shiroishi" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">白石</button>
-        <button data-ward="toyohira" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">豊平</button>
-        <button data-ward="minami" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">南</button>
-        <button data-ward="nishi" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">西</button>
-        <button data-ward="atsubetsu" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">厚別</button>
-        <button data-ward="teine" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">手稲</button>
-        <button data-ward="kiyota" class="ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">清田</button>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-1.5">
-        <div class="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--card)] overflow-hidden" id="season-bar">
-          <button data-season="spring" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">春</button>
-          <button data-season="summer" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">夏</button>
-          <button data-season="autumn" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">秋</button>
-          <button data-season="winter" class="ctrl-btn px-2 py-1 bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">冬</button>
-        </div>
-        <div class="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--card)] overflow-hidden" id="weather-bar">
-          <button data-weather="clear" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">☀ 快晴</button>
-          <button data-weather="cloudy" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">☁ 曇り</button>
-          <button data-weather="rain" class="ctrl-btn px-2 py-1 text-[var(--foreground)]">🌧 雨</button>
-          <button data-weather="snow" class="ctrl-btn px-2 py-1 bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">❄ 雪</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Full-Height Three.js + PLATEAU 3D Tiles Cinema Viewport -->
-    <div id="stage-wrap" class="relative flex-1 min-h-[380px] w-full rounded-xl overflow-hidden border border-[var(--card-border)] bg-black shadow-2xl">
-      <!-- Slim Streaming Progress Indicator -->
-      <div id="tile-progress-wrap" class="pointer-events-none absolute top-0 left-0 right-0 h-[3px] z-30 bg-transparent transition-opacity duration-300 opacity-0">
+  <div id="app-shell">
+    <div id="stage-wrap">
+      <div id="tile-progress-wrap" class="pointer-events-none absolute top-0 left-0 right-0 h-[2px] z-30 opacity-0 transition-opacity duration-300">
         <div id="tile-progress-bar" class="h-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-400 transition-[width] duration-200" style="width: 0%"></div>
       </div>
-      <!-- CinemaScope Letterbox Bars -->
-      <div id="bar-top" class="cinema-bar pointer-events-none absolute top-0 left-0 right-0 bg-black/95 h-5 z-10"></div>
-      <div id="bar-bot" class="cinema-bar pointer-events-none absolute bottom-0 left-0 right-0 bg-black/95 h-5 z-10"></div>
+      <div id="bar-top" class="cinema-bar pointer-events-none absolute top-0 left-0 right-0 bg-black/95 h-4 z-10"></div>
+      <div id="bar-bot" class="cinema-bar pointer-events-none absolute bottom-0 left-0 right-0 bg-black/95 h-4 z-10"></div>
 
-      <!-- Subtle Cinema Title / PLATEAU Telemetry Overlay -->
-      <div class="pointer-events-none absolute top-7 left-4 right-4 z-20 flex items-start justify-between gap-2 text-xs text-white/95 drop-shadow">
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="px-1.5 py-0.5 rounded bg-sky-500/80 text-[10px] font-bold tracking-wider text-slate-950">PLATEAU 3D</span>
-            <span class="tracking-[0.2em] font-semibold text-sm" id="shot-title">PLATEAU SAPPORO · GRAND SNOW CASTLE</span>
+      <!-- Discreet menu trigger; full chrome opens on click -->
+      <div class="top-bar">
+        <button type="button" id="btn-ui-toggle" class="chip ui-fab" title="メニュー" aria-expanded="false">☰</button>
+
+        <div id="ui-chrome">
+          <div class="glass rounded-lg px-1.5 py-1 flex flex-wrap items-center gap-1 max-w-full">
+            <a href="/index.html" class="chip no-underline text-slate-300">←</a>
+
+            <div class="menu" data-menu>
+              <button type="button" class="chip menu-toggle" data-menu-toggle>視点</button>
+              <div class="menu-panel glass" id="shot-bar">
+                <div class="menu-title">View Presets</div>
+                <div class="menu-grid">
+                  <button data-shot="0" class="ctrl-btn chip text-left">1. 大雪像・城</button>
+                  <button data-shot="1" class="ctrl-btn chip text-left">2. 大通パレード</button>
+                  <button data-shot="2" class="ctrl-btn chip text-left">3. テレビ塔</button>
+                  <button data-shot="3" class="ctrl-btn chip text-left">4. すすきの氷像</button>
+                  <button data-shot="4" class="ctrl-btn chip text-left">5. 赤れんが・駅</button>
+                  <button data-shot="5" class="ctrl-btn chip text-left">6. 藻岩山</button>
+                  <button data-shot="6" class="ctrl-btn chip text-left">7. 鉄道・地下鉄</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="menu" data-menu>
+              <button type="button" class="chip menu-toggle" data-menu-toggle>移動</button>
+              <div class="menu-panel glass" id="ward-bar" style="min-width:220px">
+                <div class="menu-title">Wards / Location</div>
+                <div class="menu-grid" style="margin-bottom:0.35rem">
+                  <button id="btn-loc" class="ctrl-btn chip soft-on text-left">📍 現在地へ</button>
+                </div>
+                <div class="menu-grid cols-5">
+                  <button data-ward="chuo" class="ctrl-btn chip">中央</button>
+                  <button data-ward="kita" class="ctrl-btn chip">北</button>
+                  <button data-ward="higashi" class="ctrl-btn chip">東</button>
+                  <button data-ward="shiroishi" class="ctrl-btn chip">白石</button>
+                  <button data-ward="toyohira" class="ctrl-btn chip">豊平</button>
+                  <button data-ward="minami" class="ctrl-btn chip">南</button>
+                  <button data-ward="nishi" class="ctrl-btn chip">西</button>
+                  <button data-ward="atsubetsu" class="ctrl-btn chip">厚別</button>
+                  <button data-ward="teine" class="ctrl-btn chip">手稲</button>
+                  <button data-ward="kiyota" class="ctrl-btn chip">清田</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="menu" data-menu>
+              <button type="button" class="chip menu-toggle" data-menu-toggle>表示</button>
+              <div class="menu-panel glass right">
+                <div class="menu-title">Display</div>
+                <div class="menu-grid">
+                  <button id="btn-lod" class="ctrl-btn chip soft-on text-left">LOD1 · 全市</button>
+                  <button id="btn-rail" class="ctrl-btn chip soft-on text-left">🚇 鉄道 ON</button>
+                  <button id="btn-map" class="ctrl-btn chip soft-on text-left">🛰 航空写真</button>
+                  <button id="btn-style" class="ctrl-btn chip text-left">リアル質感</button>
+                  <button id="btn-proj" class="ctrl-btn chip text-left">マッピング OFF</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="menu" data-menu>
+              <button type="button" class="chip menu-toggle" data-menu-toggle>大気</button>
+              <div class="menu-panel glass right" style="min-width:240px">
+                <div class="menu-title">Time / Season / Weather</div>
+                <div class="seg w-full mb-1.5" id="time-bar">
+                  <button data-time="0" class="ctrl-btn flex-1">夕方</button>
+                  <button data-time="1" class="ctrl-btn flex-1">夜景</button>
+                  <button data-time="2" class="ctrl-btn flex-1 on">昼</button>
+                  <button data-time="3" class="ctrl-btn flex-1">朝</button>
+                </div>
+                <div class="seg w-full mb-1.5" id="season-bar">
+                  <button data-season="spring" class="ctrl-btn flex-1">春</button>
+                  <button data-season="summer" class="ctrl-btn flex-1 on">夏</button>
+                  <button data-season="autumn" class="ctrl-btn flex-1">秋</button>
+                  <button data-season="winter" class="ctrl-btn flex-1">冬</button>
+                </div>
+                <div class="seg w-full" id="weather-bar">
+                  <button data-weather="clear" class="ctrl-btn flex-1 on">快晴</button>
+                  <button data-weather="cloudy" class="ctrl-btn flex-1">曇</button>
+                  <button data-weather="rain" class="ctrl-btn flex-1">雨</button>
+                  <button data-weather="snow" class="ctrl-btn flex-1">雪</button>
+                </div>
+              </div>
+            </div>
+
+            <button id="btn-rail-panel" class="chip">🚆 路線</button>
+            <button id="btn-pad-toggle" class="chip">🎮</button>
+            <button id="btn-scope" class="chip hide-sm">2.39</button>
+            <button id="btn-fs" class="chip">全画面</button>
           </div>
-          <div class="text-white/75 text-xs mt-0.5" id="shot-sub">実寸PLATEAU大通4丁目 大雪像「白雪の大城郭」プロジェクションマッピング</div>
         </div>
-        <div class="flex items-center gap-2 font-mono text-xs text-white/85">
-          <span id="rec-badge" class="hidden items-center gap-1 px-2 py-0.5 rounded bg-red-600/90 text-white font-semibold">
+      </div>
+
+      <!-- Title / telemetry -->
+      <div class="hud-title text-white/95">
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span class="px-1 py-0.5 rounded bg-sky-500/85 text-[9px] font-bold tracking-wider text-slate-950">PLATEAU</span>
+            <span class="tracking-wide font-semibold text-[12px] truncate" id="shot-title">FREE DRONE CAMERA · PLATEAU SAPPORO</span>
+          </div>
+          <div class="text-white/70 text-[10px] mt-0.5 truncate" id="shot-sub">実寸PLATEAU札幌市街を自由飛行 — ドラッグ回転・ホイールズーム・右ドラッグ移動</div>
+        </div>
+        <div class="flex items-center gap-1.5 font-mono text-[10px] text-white/85 shrink-0">
+          <span id="rec-badge" class="hidden items-center gap-1 px-1.5 py-0.5 rounded bg-red-600/90 text-white font-semibold">
             <span class="rec-dot inline-block w-1.5 h-1.5 rounded-full bg-white"></span>
             <span id="rec-timer">REC 00:00</span>
           </span>
-          <span id="tile-readout" class="px-2 py-0.5 rounded bg-slate-900/75 border border-white/15">Tiles: 読込中...</span>
-          <span id="fps-readout">60 FPS · PLATEAU</span>
+          <span id="tile-readout" class="px-1.5 py-0.5 rounded glass">Tiles…</span>
+          <span id="fps-readout" class="px-1.5 py-0.5 rounded glass">60 FPS</span>
         </div>
       </div>
 
-      <!-- On-Screen Camera Control Pad (Press & Hold for Smooth Flight) -->
-      <div id="cam-pad-wrap" class="absolute bottom-7 left-3 z-20 flex flex-col items-start gap-1 text-[11px]">
-        <button id="btn-pad-toggle" class="ctrl-btn px-2 py-0.5 rounded bg-slate-900/80 border border-white/20 text-white/85 backdrop-blur-sm">🎮 カメラ操作</button>
-        <div id="cam-pad" class="p-2 rounded-lg bg-slate-950/75 border border-white/15 backdrop-blur-md shadow-xl flex items-center gap-2.5 text-white">
-          <!-- Pan / Move D-Pad -->
-          <div class="grid grid-cols-3 gap-1">
+      <!-- Camera pad (collapsed by default) -->
+      <div id="cam-pad-wrap" class="absolute bottom-14 left-2 z-20 text-[11px]">
+        <div id="cam-pad" class="hidden glass p-1.5 rounded-lg shadow-xl flex items-center gap-2 text-white">
+          <div class="grid grid-cols-3 gap-0.5">
             <span></span>
             <button data-cam-act="fwd" title="前進" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">↑</button>
             <span></span>
-            <button data-cam-act="left" title="左へ移動" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">←</button>
-            <button data-cam-act="reset" title="大通中央へ戻す" class="ctrl-btn w-7 h-7 rounded bg-sky-500/25 border border-sky-400/40 text-sky-200 text-[10px]">●</button>
-            <button data-cam-act="right" title="右へ移動" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">→</button>
+            <button data-cam-act="left" title="左へ" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">←</button>
+            <button data-cam-act="reset" title="大通へ" class="ctrl-btn w-7 h-7 rounded bg-sky-500/25 border border-sky-400/40 text-sky-200 text-[10px]">●</button>
+            <button data-cam-act="right" title="右へ" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">→</button>
             <span></span>
             <button data-cam-act="back" title="後退" class="ctrl-btn w-7 h-7 rounded bg-slate-800/90 border border-white/15 font-bold">↓</button>
             <span></span>
           </div>
-          <!-- Orbit Rotate & Tilt -->
-          <div class="grid grid-cols-2 gap-1">
-            <button data-cam-act="rotL" title="左回転" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">⟲ 左回</button>
-            <button data-cam-act="rotR" title="右回転" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">⟳ 右回</button>
-            <button data-cam-act="tiltUp" title="俯瞰（上から見る）" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">俯瞰</button>
-            <button data-cam-act="tiltDown" title="見上げる" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">見上</button>
-            <button data-cam-act="up" title="高度を上げる" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">▲ 上昇</button>
-            <button data-cam-act="down" title="高度を下げる" class="ctrl-btn px-2 h-7 rounded bg-slate-800/90 border border-white/15">▼ 下降</button>
+          <div class="grid grid-cols-2 gap-0.5">
+            <button data-cam-act="rotL" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">⟲</button>
+            <button data-cam-act="rotR" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">⟳</button>
+            <button data-cam-act="tiltUp" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">俯瞰</button>
+            <button data-cam-act="tiltDown" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">見上</button>
+            <button data-cam-act="up" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">▲</button>
+            <button data-cam-act="down" class="ctrl-btn px-1.5 h-7 rounded bg-slate-800/90 border border-white/15 text-[10px]">▼</button>
           </div>
-          <!-- Zoom In / Out -->
-          <div class="flex flex-col gap-1">
-            <button data-cam-act="zoomIn" title="ズームイン" class="ctrl-btn w-8 h-10 rounded bg-sky-500/25 border border-sky-400/40 text-sky-100 font-bold text-sm">＋</button>
-            <button data-cam-act="zoomOut" title="ズームアウト" class="ctrl-btn w-8 h-10 rounded bg-slate-800/90 border border-white/15 font-bold text-sm">−</button>
+          <div class="flex flex-col gap-0.5">
+            <button data-cam-act="zoomIn" class="ctrl-btn w-7 h-9 rounded bg-sky-500/25 border border-sky-400/40 text-sky-100 font-bold">＋</button>
+            <button data-cam-act="zoomOut" class="ctrl-btn w-7 h-9 rounded bg-slate-800/90 border border-white/15 font-bold">−</button>
           </div>
         </div>
       </div>
 
-      <!-- Floating Rail & Subway Legend / Filter / Quick-View Panel -->
-      <div id="rail-panel-wrap" class="absolute bottom-12 right-3 z-20 flex flex-col items-end gap-1 text-[11px]">
-        <button id="btn-rail-panel" class="ctrl-btn px-2 py-0.5 rounded bg-slate-900/80 border border-white/20 text-white/85 backdrop-blur-sm">🚆 地下鉄・JR 路線</button>
-        <div id="rail-panel" class="p-2 rounded-lg bg-slate-950/80 border border-white/15 backdrop-blur-md shadow-xl flex flex-col gap-1.5 text-white min-w-[228px]">
+      <!-- Rail panel (collapsed by default) -->
+      <div id="rail-panel-wrap" class="absolute bottom-14 right-2 z-20 text-[11px] flex flex-col items-end">
+        <div id="rail-panel" class="hidden glass p-2 rounded-lg shadow-xl flex flex-col gap-1.5 text-white w-[248px] max-w-[78vw]">
           <div class="flex items-center justify-between gap-2 pb-1 border-b border-white/10">
-            <span class="text-[10px] font-semibold tracking-wider text-slate-300">SAPPORO RAIL NETWORK</span>
-            <button id="btn-rail-xray" class="ctrl-btn px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-500/15 text-cyan-200 text-[10px]">地下透視: OFF</button>
+            <span class="text-[10px] font-semibold tracking-wider text-slate-300">RAIL</span>
+            <button id="btn-rail-xray" class="ctrl-btn chip text-[10px]">透視 OFF</button>
           </div>
           <div class="grid grid-cols-2 gap-1" id="rail-line-toggles">
-            <button data-rail-line="namboku" class="ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 text-left">
-              <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#00a854] shrink-0"></span>
-              <span>南北線 <span class="text-[9px] opacity-75">16駅</span></span>
+            <button data-rail-line="namboku" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#00a854] shrink-0"></span>南北
             </button>
-            <button data-rail-line="tozai" class="ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border border-amber-400/50 bg-amber-500/20 text-amber-100 text-left">
-              <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#f39800] shrink-0"></span>
-              <span>東西線 <span class="text-[9px] opacity-75">19駅</span></span>
+            <button data-rail-line="tozai" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-amber-400/50 bg-amber-500/20 text-amber-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#f39800] shrink-0"></span>東西
             </button>
-            <button data-rail-line="toho" class="ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border border-sky-400/50 bg-sky-500/20 text-sky-100 text-left">
-              <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#0088d6] shrink-0"></span>
-              <span>東豊線 <span class="text-[9px] opacity-75">14駅</span></span>
+            <button data-rail-line="toho" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-sky-400/50 bg-sky-500/20 text-sky-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#0088d6] shrink-0"></span>東豊
             </button>
-            <button data-rail-line="jr" class="ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border border-green-400/50 bg-green-500/20 text-green-100 text-left">
-              <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#22b14c] shrink-0"></span>
-              <span>JR北海道 <span class="text-[9px] opacity-75">3線</span></span>
+            <button data-rail-line="jr" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-green-400/50 bg-green-500/20 text-green-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#22b14c] shrink-0"></span>JR
             </button>
           </div>
           <div class="pt-1 border-t border-white/10">
-            <div class="text-[9px] text-slate-400 mb-1">鉄道スポットへ移動:</div>
+            <div class="flex items-center justify-between mb-1">
+              <div class="text-[9px] text-slate-400">駅一覧</div>
+              <div id="station-list-count" class="text-[9px] text-slate-500">0</div>
+            </div>
+            <div class="flex flex-wrap gap-0.5 mb-1" id="station-filter-bar">
+              <button data-station-filter="all" class="ctrl-btn chip soft-on text-[9px] px-1 py-0.5">すべて</button>
+              <button data-station-filter="namboku" class="ctrl-btn chip text-[9px] px-1 py-0.5">南北</button>
+              <button data-station-filter="tozai" class="ctrl-btn chip text-[9px] px-1 py-0.5">東西</button>
+              <button data-station-filter="toho" class="ctrl-btn chip text-[9px] px-1 py-0.5">東豊</button>
+              <button data-station-filter="jr" class="ctrl-btn chip text-[9px] px-1 py-0.5">JR</button>
+            </div>
+            <div id="station-list" class="flex flex-col gap-0.5"></div>
+          </div>
+          <div class="pt-1 border-t border-white/10">
+            <div class="text-[9px] text-slate-400 mb-1">スポット</div>
             <div class="grid grid-cols-2 gap-1" id="rail-view-btns">
-              <button data-rail-view="jr-sapporo" class="ctrl-btn px-1.5 py-1 rounded bg-slate-800/90 border border-white/15 text-[10px]">JR札幌駅高架</button>
-              <button data-rail-view="odori-hub" class="ctrl-btn px-1.5 py-1 rounded bg-slate-800/90 border border-white/15 text-[10px]">大通3線交差</button>
-              <button data-rail-view="namboku-viaduct" class="ctrl-btn px-1.5 py-1 rounded bg-slate-800/90 border border-white/15 text-[10px]">南北線高架区間</button>
-              <button data-rail-view="shin-sapporo" class="ctrl-btn px-1.5 py-1 rounded bg-slate-800/90 border border-white/15 text-[10px]">新さっぽろ</button>
+              <button data-rail-view="jr-sapporo" class="ctrl-btn chip text-[9px] px-1 py-1">JR札幌</button>
+              <button data-rail-view="odori-hub" class="ctrl-btn chip text-[9px] px-1 py-1">大通交差</button>
+              <button data-rail-view="namboku-viaduct" class="ctrl-btn chip text-[9px] px-1 py-1">南北高架</button>
+              <button data-rail-view="shin-sapporo" class="ctrl-btn chip text-[9px] px-1 py-1">新さっぽろ</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- CC BY 4.0 Attribution Credit (Project PLATEAU + GSI Japan) -->
-      <div class="pointer-events-none absolute bottom-6 right-4 z-20 text-[11px] text-white/65 bg-slate-950/55 px-2 py-0.5 rounded backdrop-blur-sm">
-        出典：国土交通省 Project PLATEAU（札幌市全10区） / 地図・標高：国土地理院
+      <div class="pointer-events-none absolute bottom-12 right-2 z-20 text-[9px] text-white/55 px-1.5 py-0.5 rounded glass">
+        出典: PLATEAU / 国土地理院
       </div>
 
-      <!-- Film Cut Fade Curtain -->
       <div id="cut-fade" class="pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity duration-200 z-10"></div>
     </div>
 
-    <!-- Bottom Transport & Controls -->
-    <div class="shrink-0 flex flex-wrap items-center justify-between gap-3 pt-0.5 text-xs text-[var(--muted-foreground)]">
-      <div class="flex items-center gap-2.5 flex-1 min-w-[220px]">
-        <button id="btn-play" class="ctrl-btn px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] font-medium">一時停止</button>
-        <input id="timeline" type="range" min="0" max="1000" value="0" class="flex-1 accent-[var(--primary)]" />
-        <span id="timecode" class="font-mono tabular-nums text-[var(--foreground)] w-11 text-right">00:00</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <label class="flex items-center gap-1.5">
-          <span id="lbl-precip">雪</span>
-          <input id="sl-snow" type="range" min="0" max="100" value="68" class="w-20 accent-[var(--primary)]" />
+    <!-- Bottom utilities -->
+    <div class="bot-bar">
+      <div class="glass rounded-lg px-2 py-1 flex items-center gap-2 ml-auto">
+        <label class="flex items-center gap-1 text-[10px] text-slate-300 shrink-0">
+          <span id="lbl-precip">降水</span>
+          <input id="sl-snow" type="range" min="0" max="100" value="8" />
         </label>
-        <button id="btn-scope" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">2.39:1</button>
-        <button id="btn-rec" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">録画</button>
-        <button id="btn-fs" class="ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]">全画面</button>
+        <button id="btn-rec" class="chip shrink-0">録画</button>
       </div>
     </div>
   </div>

@@ -142,10 +142,10 @@ export function createMapGroundLayer(scene, renderer) {
   const texLoader = new THREE.TextureLoader();
   texLoader.setCrossOrigin('anonymous');
 
-  let currentStyle = 'std'; // Default: clear Japanese road map (roads, intersections, rivers, railways, parks)
-  let currentNight = 0.88;
-  let currentSeason = 'winter';
-  let currentWeather = 'snow';
+  let currentStyle = 'photo'; // Default: aerial photo underlay
+  let currentNight = 0.0;
+  let currentSeason = 'summer';
+  let currentWeather = 'clear';
   let undergroundXray = false;
 
   const sharedTint = new THREE.Color(0xffffff);

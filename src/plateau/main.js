@@ -24,7 +24,7 @@ import { createRealScaleTerrain } from './terrain.js';
 import { createMapGroundLayer, MAP_STYLES } from './mapGround.js';
 import { createPlateauFestivalOverlay } from './festivalOverlay.js';
 import { createSapporoRailNetwork } from './railNetwork.js';
-import { RAIL_VIEWPOINTS } from './railData.js';
+import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
 import { PLATEAU_SHOTS } from './shots.js';
 
 // ==================== DOM REFS ====================
@@ -42,9 +42,6 @@ const shotTitle = document.getElementById('shot-title');
 const shotSub = document.getElementById('shot-sub');
 const tileReadout = document.getElementById('tile-readout');
 const fpsReadout = document.getElementById('fps-readout');
-const timeline = document.getElementById('timeline');
-const timecode = document.getElementById('timecode');
-const btnPlay = document.getElementById('btn-play');
 const btnLoc = document.getElementById('btn-loc');
 const btnLod = document.getElementById('btn-lod');
 const btnRail = document.getElementById('btn-rail');
@@ -53,10 +50,12 @@ const railPanel = document.getElementById('rail-panel');
 const btnRailXray = document.getElementById('btn-rail-xray');
 const railLineButtons = Array.from(document.querySelectorAll('#rail-line-toggles button[data-rail-line]'));
 const railViewButtons = Array.from(document.querySelectorAll('#rail-view-btns button[data-rail-view]'));
+const stationFilterButtons = Array.from(document.querySelectorAll('#station-filter-bar button[data-station-filter]'));
+const stationListEl = document.getElementById('station-list');
+const stationListCountEl = document.getElementById('station-list-count');
 const btnMap = document.getElementById('btn-map');
 const btnStyle = document.getElementById('btn-style');
 const btnProj = document.getElementById('btn-proj');
-const btnCam = document.getElementById('btn-cam');
 const btnScope = document.getElementById('btn-scope');
 const btnRec = document.getElementById('btn-rec');
 const btnFs = document.getElementById('btn-fs');
@@ -531,8 +530,8 @@ const WEATHER_MODIFIERS = {
 
 const SEASON_LABELS = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
 
-let activeSeason = 'winter';
-let activeWeather = 'snow';
+let activeSeason = 'summer';
+let activeWeather = 'clear';
 
 function applyAtmosphere(env) {
   const wm = WEATHER_MODIFIERS[activeWeather] || WEATHER_MODIFIERS.clear;
@@ -590,111 +589,84 @@ function applyAtmosphere(env) {
   else lblPrecip.textContent = '降水';
 
   timeButtons.forEach((b, i) => {
-    const active = i === timeIdx;
-    b.className = 'ctrl-btn px-2 py-1.5 ' + (
-      active
-        ? 'bg-[var(--primary)] text-[var(--primary-foreground)] font-medium'
-        : 'text-[var(--foreground)]'
-    );
+    b.className = 'ctrl-btn flex-1' + (i === timeIdx ? ' on' : '');
   });
   seasonButtons.forEach(b => {
-    const active = b.dataset.season === activeSeason;
-    b.className = 'ctrl-btn px-2 py-1 ' + (
-      active
-        ? 'bg-[var(--primary)] text-[var(--primary-foreground)] font-medium'
-        : 'text-[var(--foreground)]'
-    );
+    b.className = 'ctrl-btn flex-1' + (b.dataset.season === activeSeason ? ' on' : '');
   });
   weatherButtons.forEach(b => {
-    const active = b.dataset.weather === activeWeather;
-    b.className = 'ctrl-btn px-2 py-1 ' + (
-      active
-        ? 'bg-[var(--primary)] text-[var(--primary-foreground)] font-medium'
-        : 'text-[var(--foreground)]'
-    );
+    b.className = 'ctrl-btn flex-1' + (b.dataset.weather === activeWeather ? ' on' : '');
   });
 }
 
-// ==================== TIMELINE & STATE ====================
-const TOTAL_DUR = PLATEAU_SHOTS.reduce((s, x) => s + x.dur, 0);
-const SHOT_STARTS = [];
-{ let acc = 0; for (const sh of PLATEAU_SHOTS) { SHOT_STARTS.push(acc); acc += sh.dur; } }
-
-let timeIdx = 0;
-let playing = true;
-let projEnabled = true;
-let freeCam = false;
+// ==================== VIEW / STATE ====================
+let timeIdx = 2; // 昼
+let projEnabled = false;
 let scopeOn = true;
-let snowAmount = 0.68;
+let snowAmount = 0.08;
 let whiteModelMode = false;
-let filmTime = 0;
 let clockTime = 0;
-let lastShotIdx = -1;
 let activeWardId = null;
+let activeShotIdx = null;
 let activeLocationInfo = null;
-let flyAnim = null; // Smooth camera fly-to transition when clicking a ward or current location button
+let flyAnim = null; // Smooth camera fly-to when choosing a ward / station / preset
 
 const WARD_BY_ID = Object.fromEntries(SAPPORO_WARD_VIEWS.map(w => [w.id, w]));
 
 applyAtmosphere(TIME_PRESETS[timeIdx]);
 
-function getShotAt(t) {
-  const m = ((t % TOTAL_DUR) + TOTAL_DUR) % TOTAL_DUR;
-  for (let i = PLATEAU_SHOTS.length - 1; i >= 0; i--) {
-    if (m >= SHOT_STARTS[i]) return { idx: i, u: (m - SHOT_STARTS[i]) / PLATEAU_SHOTS[i].dur };
-  }
-  return { idx: 0, u: 0 };
+// Default free-drone framing over Chuo / Odori
+{
+  const startView = WARD_BY_ID.chuo;
+  camera.position.copy(startView.eye);
+  controls.target.copy(startView.tgt);
+  controls.enabled = true;
+  updateHudTitle();
 }
 
 function updateWardUI() {
   wardButtons.forEach(b => {
-    const active = freeCam && b.dataset.ward === activeWardId;
-    b.className = 'ctrl-btn px-1.5 py-1 rounded border border-[var(--border)] ' + (
-      active
-        ? 'bg-sky-500 text-slate-950 font-semibold border-sky-300'
-        : 'bg-[var(--card)] text-[var(--foreground)]'
-    );
+    b.className = 'ctrl-btn chip' + (b.dataset.ward === activeWardId ? ' on' : '');
   });
 }
 
-function updateShotUI(idx) {
+function updateShotUI() {
   shotButtons.forEach((b, i) => {
-    const active = !freeCam && i === idx;
-    b.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] ' + (
-      active
-        ? 'bg-[var(--primary)] text-[var(--primary-foreground)] font-medium'
-        : 'bg-[var(--card)] text-[var(--foreground)]'
-    );
+    b.className = 'ctrl-btn chip text-left' + (i === activeShotIdx ? ' on' : '');
   });
   updateWardUI();
-  if (freeCam) {
-    if (activeLocationInfo) {
-      shotTitle.textContent = activeLocationInfo.title;
-      shotSub.textContent = activeLocationInfo.sub;
-    } else {
-      const w = activeWardId ? WARD_BY_ID[activeWardId] : null;
-      if (w) {
-        shotTitle.textContent = `SAPPORO WARD · ${w.name}`;
-        shotSub.textContent = `${w.area} — ドラッグ回転・ホイールズーム・右ドラッグ移動`;
-      } else {
-        shotTitle.textContent = 'FREE DRONE CAMERA · PLATEAU SAPPORO';
-        shotSub.textContent = '実寸PLATEAU札幌市街を自由飛行 — ドラッグ回転・ホイールズーム・右ドラッグ移動';
-      }
-    }
-  } else {
-    shotTitle.textContent = PLATEAU_SHOTS[idx].title;
-    shotSub.textContent = PLATEAU_SHOTS[idx].sub;
+  updateHudTitle();
+}
+
+function updateHudTitle() {
+  if (activeLocationInfo) {
+    shotTitle.textContent = activeLocationInfo.title;
+    shotSub.textContent = activeLocationInfo.sub;
+    return;
   }
+  const w = activeWardId ? WARD_BY_ID[activeWardId] : null;
+  if (w) {
+    shotTitle.textContent = `SAPPORO WARD · ${w.name}`;
+    shotSub.textContent = `${w.area} — ドラッグ回転・ホイールズーム・右ドラッグ移動`;
+    return;
+  }
+  if (activeShotIdx != null && PLATEAU_SHOTS[activeShotIdx]) {
+    shotTitle.textContent = PLATEAU_SHOTS[activeShotIdx].title;
+    shotSub.textContent = PLATEAU_SHOTS[activeShotIdx].sub;
+    return;
+  }
+  shotTitle.textContent = 'FREE DRONE CAMERA · PLATEAU SAPPORO';
+  shotSub.textContent = '実寸PLATEAU札幌市街を自由飛行 — ドラッグ回転・ホイールズーム・右ドラッグ移動';
 }
 
 function flyToWard(wardId) {
   const w = WARD_BY_ID[wardId];
   if (!w) return;
   activeLocationInfo = null;
+  activeShotIdx = null;
   activeWardId = wardId;
-  freeCam = true;
+  setUiChromeOpen?.(false);
   controls.enabled = true;
-  btnCam.textContent = '自由ドローン';
   flyAnim = {
     startPos: camera.position.clone(),
     startTgt: controls.target.clone(),
@@ -703,7 +675,7 @@ function flyToWard(wardId) {
     t: 0,
     dur: 1.05,
   };
-  updateShotUI(0);
+  updateShotUI();
 }
 
 function requestCurrentLocation() {
@@ -727,10 +699,8 @@ function requestCurrentLocation() {
           title: 'CURRENT LOCATION · 札幌市外',
           sub: `現在地（${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E）は札幌市の表示範囲外です — 札幌10区ボタンから地域を選べます`,
         };
-        freeCam = true;
         controls.enabled = true;
-        btnCam.textContent = '自由ドローン';
-        updateShotUI(0);
+        updateShotUI();
         return;
       }
 
@@ -755,9 +725,7 @@ function requestCurrentLocation() {
         title: `CURRENT LOCATION · 現在地（${nearest.name}付近）`,
         sub: `${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E ${accTxt} — ドラッグ回転・ズーム可能`,
       };
-      freeCam = true;
       controls.enabled = true;
-      btnCam.textContent = '自由ドローン';
       flyAnim = {
         startPos: camera.position.clone(),
         startTgt: controls.target.clone(),
@@ -766,7 +734,7 @@ function requestCurrentLocation() {
         t: 0,
         dur: 1.1,
       };
-      updateShotUI(0);
+      updateShotUI();
     },
     err => {
       btnLoc.textContent = '📍 現在地';
@@ -780,10 +748,8 @@ function requestCurrentLocation() {
         title: 'CURRENT LOCATION · 取得できませんでした',
         sub: msg,
       };
-      freeCam = true;
       controls.enabled = true;
-      btnCam.textContent = '自由ドローン';
-      updateShotUI(0);
+      updateShotUI();
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
@@ -796,17 +762,27 @@ function triggerCutFlash() {
 
 shotButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => {
+    const shot = PLATEAU_SHOTS[idx];
+    if (!shot) return;
+    const cam = shot.eval(0.42);
     activeWardId = null;
-    activeLocationInfo = null;
-    flyAnim = null;
-    freeCam = false;
-    controls.enabled = false;
-    btnCam.textContent = 'シネマ自動';
-    filmTime = SHOT_STARTS[idx] + 0.04;
-    playing = true;
-    btnPlay.textContent = '一時停止';
+    activeShotIdx = idx;
+    activeLocationInfo = { title: shot.title, sub: shot.sub };
+    controls.enabled = true;
+    flyAnim = {
+      startPos: camera.position.clone(),
+      startTgt: controls.target.clone(),
+      endPos: new THREE.Vector3(...cam.eye),
+      endTgt: new THREE.Vector3(...cam.tgt),
+      t: 0,
+      dur: 1.15,
+    };
+    if (Number.isFinite(cam.fov) && Math.abs(camera.fov - cam.fov) > 0.05) {
+      camera.fov = cam.fov;
+      camera.updateProjectionMatrix();
+    }
     triggerCutFlash();
-    updateShotUI(idx);
+    updateShotUI();
   });
 });
 
@@ -821,7 +797,7 @@ wardButtons.forEach(btn => {
 btnLod.addEventListener('click', () => {
   const next = plateauCity.getMode() === 'lod2' ? 'lod1' : 'lod2';
   plateauCity.loadMode(next);
-  btnLod.textContent = next === 'lod2' ? '札幌全10区: LOD2' : '札幌全10区: LOD1';
+  btnLod.textContent = next === 'lod2' ? 'LOD2 · 全市' : 'LOD1 · 全市';
 });
 
 // ==================== SAPPORO SUBWAY & JR RAIL NETWORK CONTROLS ====================
@@ -841,22 +817,18 @@ function applyRailMode(mode) {
   controls.maxPolarAngle = isXray ? Math.PI * 0.56 : Math.PI * 0.49;
 
   if (mode === 'on') {
-    btnRail.textContent = '🚇 鉄道: ON';
-    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-emerald-400/50 bg-emerald-500/20 text-emerald-200 font-medium';
+    btnRail.textContent = '🚇 鉄道 ON';
+    btnRail.className = 'ctrl-btn chip soft-on text-left';
   } else if (mode === 'xray') {
-    btnRail.textContent = '🚇 地下透視';
-    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-cyan-400/60 bg-cyan-500/25 text-cyan-100 font-semibold';
+    btnRail.textContent = '🚇 透視';
+    btnRail.className = 'ctrl-btn chip on text-left';
   } else {
-    btnRail.textContent = '🚇 鉄道: OFF';
-    btnRail.className = 'ctrl-btn px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)]';
+    btnRail.textContent = '🚇 鉄道 OFF';
+    btnRail.className = 'ctrl-btn chip text-left';
   }
 
-  btnRailXray.textContent = isXray ? '地下透視: ON' : '地下透視: OFF';
-  btnRailXray.className = 'ctrl-btn px-1.5 py-0.5 rounded border text-[10px] ' + (
-    isXray
-      ? 'border-cyan-300 bg-cyan-400/30 text-white font-semibold'
-      : 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
-  );
+  btnRailXray.textContent = isXray ? '透視 ON' : '透視 OFF';
+  btnRailXray.className = 'ctrl-btn chip text-[10px]' + (isXray ? ' on' : '');
 }
 
 const RAIL_MODE_ORDER = ['on', 'xray', 'off'];
@@ -872,12 +844,14 @@ btnRailXray.addEventListener('click', ev => {
   applyRailMode(next);
 });
 
-let railPanelVisible = true;
+let railPanelVisible = false;
 btnRailPanel.addEventListener('click', ev => {
   ev.stopPropagation();
   railPanelVisible = !railPanelVisible;
   railPanel.classList.toggle('hidden', !railPanelVisible);
-  btnRailPanel.textContent = railPanelVisible ? '🚆 地下鉄・JR 路線' : '🚆 路線パネルを表示';
+  btnRailPanel.classList.toggle('soft-on', railPanelVisible);
+  btnRailPanel.textContent = '🚆 路線';
+  if (railPanelVisible) closeAllMenus();
 });
 
 railLineButtons.forEach(btn => {
@@ -890,7 +864,7 @@ railLineButtons.forEach(btn => {
     if (railNetwork.getMode() === 'off' && next) {
       applyRailMode('on');
     }
-    btn.className = 'ctrl-btn flex items-center gap-1.5 px-2 py-1 rounded border text-left ' + (
+    btn.className = 'ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border text-left text-[10px] ' + (
       next
         ? RAIL_LINE_STYLES[key]
         : 'border-white/10 bg-slate-900/70 text-slate-500 opacity-60'
@@ -908,10 +882,9 @@ railViewButtons.forEach(btn => {
     else if (railNetwork.getMode() === 'xray') applyRailMode('on');
 
     activeWardId = null;
+    activeShotIdx = null;
     activeLocationInfo = { title: v.title, sub: v.sub };
-    freeCam = true;
     controls.enabled = true;
-    btnCam.textContent = '自由ドローン';
     flyAnim = {
       startPos: camera.position.clone(),
       startTgt: controls.target.clone(),
@@ -920,9 +893,85 @@ railViewButtons.forEach(btn => {
       t: 0,
       dur: 1.05,
     };
-    updateShotUI(0);
+    updateShotUI();
   });
 });
+
+// ==================== STATION LIST (rail panel) ====================
+const STATION_FILTER_STYLES = {
+  all: 'soft-on',
+  namboku: 'soft-on',
+  tozai: 'soft-on',
+  toho: 'soft-on',
+  jr: 'soft-on',
+};
+
+let stationFilter = 'all';
+let selectedStationName = null;
+
+function hexToCss(hex) {
+  return '#' + hex.toString(16).padStart(6, '0');
+}
+
+function renderStationList() {
+  const items = STATION_CATALOG[stationFilter] || STATION_CATALOG.all;
+  if (stationListCountEl) {
+    stationListCountEl.textContent = `${items.length}駅`;
+  }
+  if (!stationListEl) return;
+
+  stationListEl.replaceChildren();
+  for (const st of items) {
+    const btn = document.createElement('button');
+    const active = st.name === selectedStationName;
+    btn.type = 'button';
+    btn.className = 'station-item ctrl-btn flex items-center gap-1.5 w-full px-1.5 py-1 rounded border text-left ' + (
+      active
+        ? 'active border-sky-400/60 bg-sky-500/20 text-sky-50'
+        : 'border-white/10 bg-slate-900/70 text-slate-200'
+    );
+    btn.dataset.stationName = st.name;
+
+    const dot = document.createElement('span');
+    dot.className = 'inline-block w-2 h-2 rounded-full shrink-0';
+    dot.style.background = hexToCss(st.colorHex);
+
+    const code = document.createElement('span');
+    code.className = 'font-mono text-[9px] text-slate-400 w-7 shrink-0';
+    code.textContent = st.code || (st.isSubway ? '—' : 'JR');
+
+    const name = document.createElement('span');
+    name.className = 'flex-1 truncate text-[10px] font-medium';
+    name.textContent = st.name;
+
+    const line = document.createElement('span');
+    line.className = 'text-[9px] text-slate-500 shrink-0';
+    line.textContent = st.shortName || '';
+
+    btn.append(dot, code, name, line);
+    btn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      flyToStationMeta(st);
+    });
+    stationListEl.appendChild(btn);
+  }
+
+  stationFilterButtons.forEach(btn => {
+    const key = btn.dataset.stationFilter;
+    const on = key === stationFilter;
+    btn.className = 'ctrl-btn chip text-[9px] px-1 py-0.5' + (on ? ` ${STATION_FILTER_STYLES[key]}` : '');
+  });
+}
+
+stationFilterButtons.forEach(btn => {
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    stationFilter = btn.dataset.stationFilter || 'all';
+    renderStationList();
+  });
+});
+
+renderStationList();
 
 const MAP_STYLE_ORDER = ['std', 'photo', 'pale'];
 btnMap.addEventListener('click', () => {
@@ -937,20 +986,6 @@ btnStyle.addEventListener('click', () => {
   whiteModelMode = !whiteModelMode;
   winterUniforms.uWhiteModel.value = whiteModelMode ? 1.0 : 0.0;
   btnStyle.textContent = whiteModelMode ? 'ホワイト模型' : 'リアル質感';
-});
-
-btnPlay.addEventListener('click', () => {
-  playing = !playing;
-  btnPlay.textContent = playing ? '一時停止' : '再生';
-});
-
-timeline.addEventListener('input', () => {
-  activeWardId = null;
-  flyAnim = null;
-  freeCam = false;
-  controls.enabled = false;
-  btnCam.textContent = 'シネマ自動';
-  filmTime = (Number(timeline.value) / 1000) * TOTAL_DUR;
 });
 
 timeButtons.forEach((btn, idx) => {
@@ -993,12 +1028,7 @@ const _camSph = new THREE.Spherical();
 
 function ensureFreeCamForPad() {
   flyAnim = null;
-  if (!freeCam) {
-    freeCam = true;
-    controls.enabled = true;
-    btnCam.textContent = '自由ドローン';
-    updateShotUI(0);
-  }
+  controls.enabled = true;
 }
 
 function applyCameraPadStep(act, dtStep) {
@@ -1075,38 +1105,188 @@ camPadButtons.forEach(btn => {
 });
 window.addEventListener('pointerup', () => heldCamActions.clear());
 
-let padVisible = true;
+let padVisible = false;
 btnPadToggle.addEventListener('click', ev => {
   ev.stopPropagation();
   padVisible = !padVisible;
   camPad.classList.toggle('hidden', !padVisible);
-  btnPadToggle.textContent = padVisible ? '🎮 カメラ操作' : '🎮 操作を表示';
+  btnPadToggle.classList.toggle('soft-on', padVisible);
+  btnPadToggle.textContent = '🎮';
+  if (padVisible) closeAllMenus();
 });
+
+// ==================== COMPACT OVERLAY MENUS ====================
+const btnUiToggle = document.getElementById('btn-ui-toggle');
+const uiChrome = document.getElementById('ui-chrome');
+let uiChromeOpen = false;
+
+function closeAllMenus() {
+  document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+function setUiChromeOpen(open) {
+  uiChromeOpen = open;
+  uiChrome?.classList.toggle('open', open);
+  btnUiToggle?.classList.toggle('open', open);
+  btnUiToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (!open) closeAllMenus();
+}
+
+btnUiToggle?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  setUiChromeOpen(!uiChromeOpen);
+});
+
+document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const panel = btn.parentElement?.querySelector('.menu-panel');
+    if (!panel) return;
+    const willOpen = !panel.classList.contains('open');
+    closeAllMenus();
+    if (willOpen) panel.classList.add('open');
+  });
+});
+
+document.addEventListener('click', ev => {
+  if (ev.target.closest('#ui-chrome') || ev.target.closest('#btn-ui-toggle')) return;
+  if (ev.target.closest('#rail-panel') || ev.target.closest('#cam-pad')) return;
+  setUiChromeOpen(false);
+});
+
+// Choosing a shot / ward should tuck menus away for a larger map
+shotButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    closeAllMenus();
+    setUiChromeOpen(false);
+  });
+});
+wardButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    closeAllMenus();
+    setUiChromeOpen(false);
+  });
+});
+if (btnLoc) {
+  btnLoc.addEventListener('click', () => {
+    closeAllMenus();
+    setUiChromeOpen(false);
+  }, true);
+}
 
 btnProj.addEventListener('click', () => {
   projEnabled = !projEnabled;
-  btnProj.textContent = projEnabled ? 'マッピング: ON' : 'マッピング: OFF';
+  btnProj.textContent = projEnabled ? 'マッピング ON' : 'マッピング OFF';
 });
 
-btnCam.addEventListener('click', () => {
-  flyAnim = null;
-  freeCam = !freeCam;
-  if (!freeCam) activeWardId = null;
-  controls.enabled = freeCam;
-  btnCam.textContent = freeCam ? '自由ドローン' : 'シネマ自動';
-  updateShotUI(getShotAt(filmTime).idx);
-});
+// ==================== STATION BADGE CLICK → FLY TO STATION ====================
+let ptrGesture = null;
+let hoveredStationName = null;
 
-renderer.domElement.addEventListener('pointerdown', () => {
+function eventToNdc(ev) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    x: ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+    y: -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+  };
+}
+
+function flyToStationView(view) {
+  if (!view) return;
+
+  if (railNetwork.getMode() === 'off') applyRailMode('on');
+  if (view.suggestXray) applyRailMode('xray');
+  else if (railNetwork.getMode() === 'xray' && !view.suggestXray) applyRailMode('on');
+
+  activeWardId = null;
+  activeShotIdx = null;
+  activeLocationInfo = { title: view.title, sub: view.sub };
+  controls.enabled = true;
+  flyAnim = {
+    startPos: camera.position.clone(),
+    startTgt: controls.target.clone(),
+    endPos: view.eye.clone(),
+    endTgt: view.tgt.clone(),
+    t: 0,
+    dur: 1.15,
+  };
+  updateShotUI();
+
+  cutFade.style.opacity = '0.35';
+  setTimeout(() => { cutFade.style.opacity = '0'; }, 90);
+}
+
+function flyToStationInfo(info) {
+  flyToStationView(railNetwork.getStationCameraView(info));
+}
+
+function flyToStationMeta(meta) {
+  selectedStationName = meta.name;
+  renderStationList();
+  flyToStationView(railNetwork.resolveStationCameraView(meta.name, meta));
+}
+
+renderer.domElement.addEventListener('pointerdown', ev => {
+  ptrGesture = { x: ev.clientX, y: ev.clientY, t: performance.now() };
   flyAnim = null; // Immediately yield control to user drag
-  if (!freeCam) {
-    freeCam = true;
-    controls.enabled = true;
-    btnCam.textContent = '自由ドローン';
-    updateShotUI(0);
+  controls.enabled = true;
+});
+
+renderer.domElement.addEventListener('pointermove', ev => {
+  if (railNetwork.getMode() === 'off') {
+    if (hoveredStationName) {
+      hoveredStationName = null;
+      railNetwork.setStationHover(null);
+      renderer.domElement.style.cursor = '';
+    }
+    return;
+  }
+  // Skip hover while dragging the camera
+  if (ptrGesture) {
+    const dx = ev.clientX - ptrGesture.x;
+    const dy = ev.clientY - ptrGesture.y;
+    if (dx * dx + dy * dy > 16) return;
+  }
+  const ndc = eventToNdc(ev);
+  const hit = railNetwork.pickStation(ndc.x, ndc.y, camera);
+  const name = hit?.name || null;
+  if (name !== hoveredStationName) {
+    hoveredStationName = name;
+    railNetwork.setStationHover(name);
+    renderer.domElement.style.cursor = name ? 'pointer' : '';
   }
 });
-controls.enabled = false;
+
+renderer.domElement.addEventListener('pointerup', ev => {
+  const g = ptrGesture;
+  ptrGesture = null;
+  if (!g) return;
+  const dx = ev.clientX - g.x;
+  const dy = ev.clientY - g.y;
+  const dt = performance.now() - g.t;
+  // Treat as click only when almost no drag (avoid fighting OrbitControls)
+  if (dx * dx + dy * dy > 36 || dt > 700) return;
+  if (railNetwork.getMode() === 'off') return;
+
+  const ndc = eventToNdc(ev);
+  const hit = railNetwork.pickStation(ndc.x, ndc.y, camera);
+  if (hit) {
+    selectedStationName = hit.name;
+    renderStationList();
+    flyToStationInfo(hit);
+  }
+});
+
+renderer.domElement.addEventListener('pointerleave', () => {
+  ptrGesture = null;
+  if (hoveredStationName) {
+    hoveredStationName = null;
+    railNetwork.setStationHover(null);
+    renderer.domElement.style.cursor = '';
+  }
+});
+
+controls.enabled = true;
 
 slSnow.addEventListener('input', () => {
   snowAmount = Number(slSnow.value) / 100;
@@ -1116,7 +1296,7 @@ btnScope.addEventListener('click', () => {
   scopeOn = !scopeOn;
   barTop.style.height = scopeOn ? '20px' : '0px';
   barBot.style.height = scopeOn ? '20px' : '0px';
-  btnScope.textContent = scopeOn ? '2.39:1' : '16:9';
+  btnScope.textContent = scopeOn ? '2.39' : '16:9';
 });
 
 btnFs.addEventListener('click', () => {
@@ -1195,7 +1375,6 @@ function animate(ts) {
   if (dt > 0) fpsSmooth = fpsSmooth * 0.9 + (1 / dt) * 0.1;
 
   clockTime += dt;
-  if (playing && !freeCam) filmTime = (filmTime + dt) % TOTAL_DUR;
 
   if (recorder && recorder.state === 'recording') {
     const sec = Math.floor((ts - recStart) / 1000);
@@ -1211,7 +1390,7 @@ function animate(ts) {
     }
   }
 
-  // Camera update
+  // Camera update (always interactive free-drone; optional fly-to animation)
   if (flyAnim) {
     flyAnim.t = Math.min(1, flyAnim.t + dt / flyAnim.dur);
     const e = 1 - Math.pow(1 - flyAnim.t, 3); // Ease-out cubic
@@ -1219,23 +1398,8 @@ function animate(ts) {
     controls.target.lerpVectors(flyAnim.startTgt, flyAnim.endTgt, e);
     camera.lookAt(controls.target);
     if (flyAnim.t >= 1) flyAnim = null;
-  } else if (freeCam) {
-    controls.update();
   } else {
-    const sh = getShotAt(filmTime);
-    if (sh.idx !== lastShotIdx) {
-      if (lastShotIdx !== -1) triggerCutFlash();
-      lastShotIdx = sh.idx;
-      updateShotUI(sh.idx);
-    }
-    const cam = PLATEAU_SHOTS[sh.idx].eval(sh.u);
-    camera.position.set(...cam.eye);
-    camera.lookAt(...cam.tgt);
-    controls.target.set(...cam.tgt);
-    if (Math.abs(camera.fov - cam.fov) > 0.05) {
-      camera.fov = cam.fov;
-      camera.updateProjectionMatrix();
-    }
+    controls.update();
   }
 
   // Keep directional shadow map centered on the currently viewed ward/area
@@ -1272,11 +1436,8 @@ function animate(ts) {
   railNetwork.update(clockTime, env.night, camera.position);
   updatePrecipitation(dt, clockTime, camera.position, snowAmount, activeWeather, activeSeason);
 
-  // HUD updates (~5Hz for tile telemetry, every frame for timeline)
-  timeline.value = String(Math.round((filmTime / TOTAL_DUR) * 1000));
-  const secNow = Math.floor(filmTime);
-  timecode.textContent = `${String(Math.floor(secNow / 60)).padStart(2, '0')}:${String(secNow % 60).padStart(2, '0')}`;
-  fpsReadout.textContent = `${Math.round(fpsSmooth)} FPS · PLATEAU`;
+  // HUD updates (~5Hz for tile telemetry)
+  fpsReadout.textContent = `${Math.round(fpsSmooth)} FPS`;
 
   hudTick += dt;
   if (hudTick >= 0.2) {
@@ -1300,5 +1461,5 @@ function animate(ts) {
   composer.render();
 }
 
-updateShotUI(0);
+updateShotUI();
 requestAnimationFrame(animate);

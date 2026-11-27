@@ -6,42 +6,49 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 /**
  * Creates a crisp Japanese station badge sprite texture on an offscreen Canvas.
+ * `compact` shrinks chrome for non-hub stops so all stations can stay readable together.
  */
-function createStationBadgeTexture(title, sub, accentHex, isJR) {
+function createStationBadgeTexture(title, sub, accentHex, isJR, compact = false) {
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 76;
+  c.width = compact ? 220 : 256;
+  c.height = compact ? 64 : 76;
   const ctx = c.getContext('2d');
 
   const hexStr = '#' + accentHex.toString(16).padStart(6, '0');
+  const pad = compact ? 5 : 6;
+  const barW = compact ? 34 : 42;
+  const nameX = compact ? 52 : 66;
+  const midY = c.height * 0.5;
+  const nameSize = title.length >= 8 ? (compact ? 15 : 17) : title.length >= 6 ? (compact ? 17 : 20) : (compact ? 19 : 24);
 
   // Rounded dark translucent pill
-  ctx.fillStyle = 'rgba(9, 14, 28, 0.84)';
+  ctx.fillStyle = compact ? 'rgba(9, 14, 28, 0.78)' : 'rgba(9, 14, 28, 0.84)';
   ctx.strokeStyle = hexStr;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = compact ? 3 : 4;
   ctx.beginPath();
-  ctx.roundRect(6, 6, 244, 64, 14);
+  ctx.roundRect(pad, pad, c.width - pad * 2, c.height - pad * 2, compact ? 11 : 14);
   ctx.fill();
   ctx.stroke();
 
   // Left color bar / badge
   ctx.fillStyle = hexStr;
   ctx.beginPath();
-  ctx.roundRect(14, 15, 42, 46, 8);
+  ctx.roundRect(pad + 6, pad + 7, barW, c.height - pad * 2 - 14, 7);
   ctx.fill();
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif';
+  ctx.font = `bold ${compact ? 14 : 20}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(isJR ? 'JR' : sub, 35, 39);
+  const badgeLabel = isJR ? 'JR' : (sub || '').slice(0, 3);
+  ctx.fillText(badgeLabel, pad + 6 + barW * 0.5, midY);
 
   // Station name
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif';
+  ctx.font = `bold ${nameSize}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(title, 66, 39);
+  ctx.fillText(title, nameX, midY);
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -187,7 +194,7 @@ function buildStationSchedule(curve, stationArcLengths, totalLength, speedMps, d
  *  - Realistic JR elevated concrete viaducts with piers, plus Namboku Line's famous snow-shelter viaduct
  *  - Depth-aware X-Ray pass (THREE.GreaterDepth) so underground subways glow crisply beneath streets & buildings
  *  - Articulated multi-car 3D trains rendered via InstancedMesh (body, livery stripe, lit windows, headlights/taillights)
- *  - Station markers & clean major hub badges
+ *  - Station markers & labels for EVERY subway / JR stop (hubs slightly larger)
  */
 export function createSapporoRailNetwork(scene, mapGround) {
   const rootGroup = new THREE.Group();
@@ -204,7 +211,12 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   let railMode = 'on'; // 'on' | 'xray' | 'off'
   const lineEntries = [];
-  const labelSprites = [];
+  // One floating label per unique stop name (shared JR / transfer hubs would otherwise stack)
+  const placedStationLabels = new Set();
+  /** @type {Map<string, { sprite: THREE.Sprite, name: string, code: string, lineId: string, lineKey: string, lineName: string, isSubway: boolean, relY: number, trackPos: THREE.Vector3, groundY: number, colorHex: number }>} */
+  const stationLabelByName = new Map();
+  const _pickRaycaster = new THREE.Raycaster();
+  _pickRaycaster.params.Sprite = { threshold: 0.1 };
 
   // Shared train car unit geometries (car faces +X, up = +Y, width = Z)
   // Unit-sized 1x1x1 boxes scaled per line/car so ALL trains share minimal draw calls!
@@ -332,6 +344,14 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   function buildLineInfra(entry) {
     const { spec, infraGroup } = entry;
+
+    // DEM rebuild clears meshes; also release this line's label keys so every stop
+    // can be re-labeled (otherwise the Set blocks recreation and names vanish).
+    for (const name of entry.ownedLabelNames || []) {
+      placedStationLabels.delete(name);
+      stationLabelByName.delete(name);
+    }
+    entry.ownedLabelNames = [];
 
     // Clear previous infra (used when GSI DEM elevation finishes refining)
     while (infraGroup.children.length > 0) {
@@ -540,7 +560,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
       infraGroup.add(pierIM);
     }
 
-    // 4. Station Platforms, Glowing Rings & Major Hub Labels
+    // 4. Station Platforms, Glowing Rings & Labels (every named stop)
     const ringGeo = new THREE.RingGeometry(6.5, 10.2, 24);
     ringGeo.rotateX(-Math.PI / 2);
     const stationRingMat = new THREE.MeshBasicMaterial({
@@ -573,6 +593,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
     for (const st of stationPositions) {
       const yaw = Math.atan2(-st.tan.z, st.tan.x);
+      const isMajor = Boolean(st.pt.major);
 
       // Station platform block at track level
       const plat = new THREE.Mesh(platGeo, platMat);
@@ -611,25 +632,122 @@ export function createSapporoRailNetwork(scene, mapGround) {
         infraGroup.add(shaft);
       }
 
-      // Clean floating station badge for major hubs
-      if (st.pt.major) {
-        const badgeTex = createStationBadgeTexture(st.pt.name, st.pt.code || spec.shortName, spec.colorHex, !isSubway);
+      // Floating clickable label for every station; skip duplicates at shared hubs
+      const labelKey = st.pt.name;
+      if (st.pt.name && !placedStationLabels.has(labelKey)) {
+        placedStationLabels.add(labelKey);
+        entry.ownedLabelNames.push(labelKey);
+        const badgeTex = createStationBadgeTexture(
+          st.pt.name,
+          st.pt.code || spec.shortName,
+          spec.colorHex,
+          !isSubway,
+          !isMajor
+        );
         const spriteMat = new THREE.SpriteMaterial({
           map: badgeTex,
           transparent: true,
-          opacity: 0.92,
+          opacity: isMajor ? 0.94 : 0.90,
           depthTest: false,
-          fog: true,
+          fog: false, // keep names readable through winter atmosphere fog
         });
         const sprite = new THREE.Sprite(spriteMat);
-        const badgeY = Math.max(st.groundY, st.pos.y) + (isSubway ? 38 : 44);
+        const badgeY = Math.max(st.groundY, st.pos.y) + (isSubway ? (isMajor ? 38 : 30) : (isMajor ? 44 : 34));
         sprite.position.set(st.pos.x, badgeY, st.pos.z);
-        sprite.scale.set(66, 19.5, 1);
-        sprite.renderOrder = 60;
+        const baseW = isMajor ? 66 : 52;
+        const baseH = isMajor ? 19.5 : 15;
+        sprite.scale.set(baseW, baseH, 1);
+        sprite.renderOrder = isMajor ? 60 : 58;
+        sprite.userData.baseW = baseW;
+        sprite.userData.baseH = baseH;
+        sprite.userData.isMajor = isMajor;
+        sprite.userData.isStationBadge = true;
+        sprite.userData.stationName = st.pt.name;
+        sprite.userData.peakOpacity = isMajor ? 0.94 : 0.90;
+        // City-scale viewing: keep labels visible across Sapporo (~10–15 km)
+        sprite.userData.fadeStart = isMajor ? 9000 : 7500;
+        sprite.userData.fadeEnd = isMajor ? 14000 : 12000;
         infraGroup.add(sprite);
-        labelSprites.push({ sprite, basePos: sprite.position.clone(), lineKey: isSubway ? spec.id : 'jr' });
+
+        const lineKey = isSubway ? spec.id : 'jr';
+        stationLabelByName.set(labelKey, {
+          sprite,
+          name: st.pt.name,
+          code: st.pt.code || '',
+          lineId: spec.id,
+          lineKey,
+          lineName: spec.name,
+          isSubway,
+          relY: st.pt.relY,
+          trackPos: st.pos.clone(),
+          groundY: st.groundY,
+          colorHex: spec.colorHex,
+        });
       }
     }
+  }
+
+  function isLineKeyVisible(lineKey) {
+    if (railMode === 'off') return false;
+    return Boolean(lineEnabled[lineKey]);
+  }
+
+  /**
+   * Ray-pick a visible station badge under normalized device coords (-1..1).
+   */
+  function pickStation(ndcX, ndcY, camera) {
+    if (railMode === 'off') return null;
+    const sprites = [];
+    for (const info of stationLabelByName.values()) {
+      const sp = info.sprite;
+      if (!sp.visible || sp.material.opacity < 0.05) continue;
+      if (!isLineKeyVisible(info.lineKey)) continue;
+      if (!info.sprite.parent?.visible) continue;
+      sprites.push(sp);
+    }
+    if (!sprites.length) return null;
+
+    _pickRaycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+    // Enlarge pick tolerance a bit so compact badges are easy to tap
+    const prevThresh = _pickRaycaster.params.Sprite?.threshold ?? 0;
+    if (_pickRaycaster.params.Sprite) _pickRaycaster.params.Sprite.threshold = 0.35;
+    const hits = _pickRaycaster.intersectObjects(sprites, false);
+    if (_pickRaycaster.params.Sprite) _pickRaycaster.params.Sprite.threshold = prevThresh;
+    if (!hits.length) return null;
+
+    const name = hits[0].object.userData.stationName;
+    return name ? stationLabelByName.get(name) || null : null;
+  }
+
+  /**
+   * Build a cinema-style fly-to framing for a station (eye + look-at target + copy).
+   */
+  function getStationCameraView(info) {
+    if (!info) return null;
+    const underground = info.isSubway && info.relY < 0;
+    const tgt = info.trackPos.clone();
+    tgt.y = underground
+      ? info.groundY + 8
+      : Math.max(info.groundY, info.trackPos.y) + 12;
+
+    const dist = underground ? 210 : 250;
+    const height = underground ? 105 : 88;
+    const eye = new THREE.Vector3(
+      tgt.x - dist * 0.78,
+      tgt.y + height,
+      tgt.z + dist * 0.72
+    );
+
+    const codePart = info.code ? ` ${info.code}` : '';
+    return {
+      name: info.name,
+      code: info.code,
+      eye,
+      tgt,
+      suggestXray: underground,
+      title: `${info.isSubway ? 'SUBWAY' : 'JR'} · ${info.name}${codePart}`,
+      sub: `${info.lineName} — 駅名バッジから移動 · ドラッグで周囲を確認`,
+    };
   }
 
   // Initialize every line entry & train fleet
@@ -692,6 +810,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
       spec,
       infraGroup,
       groundYs: spec.points.map(p => p.initGroundY),
+      ownedLabelNames: [],
       trains,
       curve: null,
       totalLength: 1,
@@ -816,18 +935,27 @@ export function createSapporoRailNetwork(scene, mapGround) {
     solidTailMat.emissiveIntensity = 1.4 + 3.2 * nightClamped;
     solidStripeMat.emissiveIntensity = 0.25 + 0.55 * nightClamped;
 
-    // Scale station badges gently with camera distance so nearby hubs stay crisp & distant ones don't overwhelm
+    // Scale station badges with camera distance; keep names readable city-wide
     if (cameraPos) {
       for (const entry of lineEntries) {
         if (!entry.infraGroup.visible) continue;
         for (const ch of entry.infraGroup.children) {
-          if (ch.isSprite) {
-            const d = cameraPos.distanceTo(ch.position);
-            const s = Math.max(0.55, Math.min(2.6, d / 420));
-            ch.scale.set(66 * s, 19.5 * s, 1);
-            // Fade out very distant badges (> 4.5 km) so horizon stays clean
-            ch.material.opacity = d < 3200 ? 0.90 : Math.max(0.0, 0.90 * (1 - (d - 3200) / 1600));
-          }
+          if (!ch.isSprite) continue;
+          const d = cameraPos.distanceTo(ch.position);
+          const baseW = ch.userData.baseW || 66;
+          const baseH = ch.userData.baseH || 19.5;
+          const fadeStart = ch.userData.fadeStart || 7500;
+          const fadeEnd = ch.userData.fadeEnd || 12000;
+          const peak = ch.userData.peakOpacity ?? (ch.userData.isMajor ? 0.94 : 0.90);
+          const hoverBoost = ch.userData.hovered ? 1.08 : 1;
+          // Gentler growth so far labels stay legible without huge billboards
+          const s = Math.max(0.7, Math.min(2.2, Math.sqrt(d / 380))) * hoverBoost;
+          ch.scale.set(baseW * s, baseH * s, 1);
+          const baseOpacity = d < fadeStart
+            ? peak
+            : Math.max(0.0, peak * (1 - (d - fadeStart) / Math.max(1, fadeEnd - fadeStart)));
+          ch.material.opacity = Math.min(1, baseOpacity * (ch.userData.hovered ? 1.06 : 1));
+          ch.visible = ch.material.opacity > 0.04;
         }
       }
     }
@@ -964,6 +1092,41 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   syncVisibility();
 
+  function setStationHover(nameOrNull) {
+    for (const info of stationLabelByName.values()) {
+      info.sprite.userData.hovered = Boolean(nameOrNull) && info.name === nameOrNull;
+    }
+  }
+
+  function getStationInfo(name) {
+    return stationLabelByName.get(name) || null;
+  }
+
+  /**
+   * Prefer live DEM-refined station pose; fall back to catalog lat/lon metadata.
+   */
+  function resolveStationCameraView(name, fallbackMeta = null) {
+    const live = stationLabelByName.get(name);
+    if (live) return getStationCameraView(live);
+    if (!fallbackMeta) return null;
+
+    const groundY = fallbackMeta.initGroundY ?? 0;
+    const trackPos = latLonToGround(
+      fallbackMeta.lat,
+      fallbackMeta.lon,
+      groundY + (fallbackMeta.relY ?? 0)
+    );
+    return getStationCameraView({
+      name: fallbackMeta.name,
+      code: fallbackMeta.code || '',
+      lineName: fallbackMeta.lineName || '',
+      isSubway: Boolean(fallbackMeta.isSubway),
+      relY: fallbackMeta.relY ?? 0,
+      trackPos,
+      groundY,
+    });
+  }
+
   return {
     group: rootGroup,
     update,
@@ -971,10 +1134,16 @@ export function createSapporoRailNetwork(scene, mapGround) {
     getMode: () => railMode,
     setLineEnabled,
     getLineEnabled: () => ({ ...lineEnabled }),
+    pickStation,
+    getStationInfo,
+    getStationCameraView,
+    resolveStationCameraView,
+    setStationHover,
     getStats: () => ({
       totalTrains: totalSolidTrains,
       subwayTrains: totalXrayTrains,
       jrTrains: totalSolidTrains - totalXrayTrains,
+      stations: stationLabelByName.size,
     }),
   };
 }

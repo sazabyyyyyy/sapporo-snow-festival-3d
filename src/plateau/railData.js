@@ -281,6 +281,63 @@ export const RAIL_LINES = [
   },
 ];
 
+/**
+ * Station catalog for the rail panel list UI.
+ * - Per-line arrays keep route order
+ * - `all` is unique-by-name (first occurrence wins across namboku → tozai → toho → JR)
+ * - `jr` is unique-by-name across the three JR corridors
+ */
+export function buildStationCatalog() {
+  const catalog = {
+    all: [],
+    namboku: [],
+    tozai: [],
+    toho: [],
+    jr: [],
+  };
+  const seenAll = new Set();
+  const seenJr = new Set();
+
+  for (const line of RAIL_LINES) {
+    const filterKey = line.group === 'jr' ? 'jr' : line.id;
+    for (const pt of line.points) {
+      if (!pt.name) continue;
+      const item = {
+        name: pt.name,
+        code: pt.code || '',
+        lineId: line.id,
+        lineName: line.name,
+        shortName: line.shortName,
+        filterKey,
+        colorHex: line.colorHex,
+        lat: pt.lat,
+        lon: pt.lon,
+        relY: pt.relY,
+        initGroundY: pt.initGroundY ?? 0,
+        major: Boolean(pt.major),
+        isSubway: line.group === 'subway',
+      };
+
+      if (filterKey === 'jr') {
+        if (!seenJr.has(pt.name)) {
+          seenJr.add(pt.name);
+          catalog.jr.push(item);
+        }
+      } else {
+        catalog[filterKey].push(item);
+      }
+
+      if (!seenAll.has(pt.name)) {
+        seenAll.add(pt.name);
+        catalog.all.push(item);
+      }
+    }
+  }
+  return catalog;
+}
+
+export const STATION_CATALOG = buildStationCatalog();
+
 // ==================== QUICK-JUMP RAILWAY CAMERA VIEWPOINTS ====================
 function makeRailView(id, label, title, sub, lat, lon, tgtY, eyeDx, eyeDy, eyeDz, suggestXray = false) {
   const tgt = latLonToGround(lat, lon, tgtY);

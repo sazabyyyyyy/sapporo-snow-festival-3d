@@ -117,7 +117,7 @@ export function createPlateauCityManager({ scene, camera, renderer, winterUnifor
   dracoLoader.preload();
 
   let activeRenderers = [];
-  let currentMode = 'lod2';
+  let currentMode = 'lod1';
   let groundEllipsoidalHeight = ORIGIN.height;
   let loadedModelCount = 0;
   let loadErrorCount = 0;
@@ -321,7 +321,7 @@ export function createPlateauCityManager({ scene, camera, renderer, winterUnifor
   }
 
   // Start immediately with LOD2
-  loadMode('lod2');
+  loadMode('lod1');
 
   return {
     rootGroup,
