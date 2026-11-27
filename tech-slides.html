@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sapporo Snow Festival 3D — 技術解説</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans+JP:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #050c17;
+      --bg1: #0b182b;
+      --surface: rgba(11, 24, 43, 0.78);
+      --surface-strong: rgba(8, 18, 34, 0.92);
+      --ink: #ecf3fb;
+      --muted: #93aac2;
+      --dim: #667e98;
+      --ice: #6fd0f6;
+      --ice-soft: rgba(111, 208, 246, 0.14);
+      --amber: #f4a853;
+      --amber-soft: rgba(244, 168, 83, 0.14);
+      --emerald: #34d399;
+      --emerald-soft: rgba(52, 211, 153, 0.14);
+      --namboku: #00b85c;
+      --tozai: #f59e0b;
+      --toho: #0ea5e9;
+      --jr: #22c55e;
+      --snow: #f8fbff;
+      --line: rgba(126, 200, 232, 0.24);
+      --line-strong: rgba(126, 200, 232, 0.45);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      background: var(--bg0);
+      color: var(--ink);
+      font-family: "IBM Plex Sans JP", -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Atmospheric twilight gradient + subtle architectural blueprint grid */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 75% 55% at 14% 8%, rgba(111, 208, 246, 0.14), transparent 58%),
+        radial-gradient(ellipse 60% 50% at 88% 88%, rgba(244, 168, 83, 0.11), transparent 54%),
+        radial-gradient(ellipse 45% 40% at 52% 48%, rgba(14, 165, 233, 0.05), transparent 65%),
+        linear-gradient(162deg, var(--bg0), var(--bg1) 56%, #071222);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(126, 200, 232, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(126, 200, 232, 0.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 85% 85% at 50% 45%, black 20%, transparent 85%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--ice), var(--emerald), var(--amber));
+      z-index: 40;
+      transition: width 360ms cubic-bezier(.22, 1, .36, 1);
+      box-shadow: 0 0 12px rgba(111, 208, 246, 0.65);
+    }
+
+    .deck {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      width: 100%;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: clamp(1.4rem, 3.2vw, 2.75rem) clamp(1.5rem, 4.5vw, 4rem) clamp(3.6rem, 6vh, 4.4rem);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(16px);
+      transition: opacity 380ms ease, transform 460ms cubic-bezier(.22, 1, .36, 1), visibility 0s 380ms;
+      pointer-events: none;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition: opacity 380ms ease, transform 460ms cubic-bezier(.22, 1, .36, 1);
+      pointer-events: auto;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ice);
+      margin-bottom: 0.45rem;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 1.4rem;
+      height: 1px;
+      background: linear-gradient(90deg, var(--ice), transparent);
+    }
+
+    h1 {
+      font-family: "Bebas Neue", sans-serif;
+      font-weight: 400;
+      font-size: clamp(3.3rem, 8.2vw, 6.4rem);
+      line-height: 0.9;
+      letter-spacing: 0.025em;
+      color: var(--snow);
+      text-shadow: 0 8px 36px rgba(111, 208, 246, 0.18);
+    }
+
+    h2 {
+      font-family: "IBM Plex Sans JP", sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.65rem, 3.3vw, 2.55rem);
+      letter-spacing: -0.01em;
+      line-height: 1.18;
+      color: var(--snow);
+    }
+
+    h2 .sub-en {
+      font-family: "Bebas Neue", sans-serif;
+      font-weight: 400;
+      font-size: 0.72em;
+      letter-spacing: 0.08em;
+      color: var(--dim);
+      margin-left: 0.65rem;
+      vertical-align: middle;
+    }
+
+    h3 {
+      font-size: 0.96rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--snow);
+      margin-bottom: 0.4rem;
+    }
+
+    .lede {
+      margin-top: 0.75rem;
+      max-width: 44rem;
+      font-size: clamp(0.95rem, 1.35vw, 1.12rem);
+      font-weight: 300;
+      line-height: 1.72;
+      color: var(--muted);
+    }
+
+    .slide-body {
+      display: grid;
+      align-content: center;
+      gap: 1.15rem;
+      min-height: 0;
+      padding: 0.75rem 0;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .slide-body::-webkit-scrollbar { display: none; }
+
+    .slide-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 0.7rem;
+      border-top: 1px solid var(--line);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--dim);
+      letter-spacing: 0.08em;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: clamp(1rem, 2.4vw, 2.2rem);
+      align-items: center;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.9rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem 1.15rem;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .card.accent-ice { border-color: rgba(111, 208, 246, 0.4); }
+    .card.accent-amber { border-color: rgba(244, 168, 83, 0.42); }
+    .card.accent-emerald { border-color: rgba(52, 211, 153, 0.42); }
+
+    .card p, .bullet {
+      font-size: 0.88rem;
+      line-height: 1.65;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .card b, .bullet b { color: var(--snow); font-weight: 600; }
+
+    .bullet {
+      list-style: none;
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .bullet li {
+      position: relative;
+      padding-left: 1.15rem;
+    }
+
+    .bullet li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.58em;
+      width: 0.42rem;
+      height: 0.42rem;
+      border-radius: 50%;
+      background: var(--ice);
+      box-shadow: 0 0 8px rgba(111, 208, 246, 0.6);
+    }
+
+    .bullet.amber li::before {
+      background: var(--amber);
+      box-shadow: 0 0 8px rgba(244, 168, 83, 0.6);
+    }
+
+    .tag {
+      display: inline-block;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--ice);
+      background: var(--ice-soft);
+      margin-bottom: 0.5rem;
+    }
+
+    .tag.amber {
+      color: var(--amber);
+      border-color: rgba(244, 168, 83, 0.42);
+      background: var(--amber-soft);
+    }
+
+    .tag.emerald {
+      color: var(--emerald);
+      border-color: rgba(52, 211, 153, 0.42);
+      background: var(--emerald-soft);
+    }
+
+    .diagram-box {
+      background: rgba(6, 15, 29, 0.68);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.85rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .diagram {
+      display: block;
+      width: 100%;
+      height: auto;
+      overflow: visible;
+    }
+
+    .diagram text {
+      font-family: "IBM Plex Sans JP", sans-serif;
+      fill: var(--ink);
+    }
+
+    .diagram .muted { fill: var(--muted); }
+    .diagram .mono {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px;
+    }
+
+    .flow-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.48rem;
+    }
+
+    .chip {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.76rem;
+      padding: 0.45rem 0.78rem;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: rgba(111, 208, 246, 0.08);
+      color: var(--snow);
+    }
+
+    .chip.amber {
+      border-color: rgba(244, 168, 83, 0.4);
+      background: var(--amber-soft);
+      color: #fde0b4;
+    }
+
+    .chip.emerald {
+      border-color: rgba(52, 211, 153, 0.4);
+      background: var(--emerald-soft);
+      color: #c5f7e2;
+    }
+
+    .arrow {
+      color: var(--ice);
+      font-size: 1rem;
+      opacity: 0.75;
+    }
+
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.8rem;
+    }
+
+    .kpi .card {
+      padding: 0.85rem 1rem;
+    }
+
+    .kpi strong {
+      display: block;
+      font-family: "Bebas Neue", sans-serif;
+      font-size: 1.95rem;
+      letter-spacing: 0.03em;
+      color: var(--ice);
+      line-height: 1;
+      margin-bottom: 0.2rem;
+    }
+
+    .kpi span {
+      font-size: 0.76rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .title-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.85fr;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .title-meta {
+      margin-top: 1.4rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .code {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.76rem;
+      color: var(--ice);
+      background: rgba(3, 8, 17, 0.62);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 0.65rem 0.85rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    code.inline {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.86em;
+      color: var(--ice);
+      background: rgba(111, 208, 246, 0.1);
+      padding: 0.08rem 0.34rem;
+      border-radius: 5px;
+    }
+
+    .stack { display: grid; gap: 0.75rem; }
+
+    .layer-list { display: grid; gap: 0.45rem; }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 8.2rem 1fr;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.58rem 0.85rem;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(8, 20, 36, 0.62);
+    }
+
+    .layer b {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      color: var(--ice);
+      letter-spacing: 0.03em;
+    }
+
+    .layer span {
+      font-size: 0.84rem;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .rail-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: 0.25rem;
+    }
+
+    .rail-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.28rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(8, 20, 36, 0.82);
+      border: 1px solid var(--line);
+      color: var(--snow);
+    }
+
+    .rail-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Bottom navigation dock */
+    .dock {
+      position: fixed;
+      left: 50%;
+      bottom: clamp(0.75rem, 2vh, 1.25rem);
+      transform: translateX(-50%);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      background: var(--surface-strong);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    }
+
+    .dock button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(111, 208, 246, 0.08);
+      color: var(--snow);
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      transition: background 150ms ease, border-color 150ms ease, transform 90ms ease;
+    }
+
+    .dock button:hover {
+      border-color: var(--ice);
+      background: rgba(111, 208, 246, 0.2);
+    }
+
+    .dock button:focus-visible,
+    .dots button:focus-visible {
+      outline: 2px solid var(--ice);
+      outline-offset: 2px;
+    }
+
+    .dock button:active { transform: scale(0.93); }
+    .dock button:disabled { opacity: 0.35; cursor: default; }
+
+    .dots {
+      display: flex;
+      align-items: center;
+      gap: 0.32rem;
+    }
+
+    .dots button {
+      width: 0.52rem;
+      height: 0.52rem;
+      padding: 0;
+      border-radius: 999px;
+      border: none;
+      background: rgba(147, 170, 194, 0.35);
+      transition: width 220ms ease, background 200ms ease;
+    }
+
+    .dots button[aria-current="true"] {
+      width: 1.5rem;
+      background: var(--ice);
+      box-shadow: 0 0 10px rgba(111, 208, 246, 0.65);
+    }
+
+    .dock-counter {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      min-width: 3.6rem;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hint {
+      position: fixed;
+      left: clamp(1rem, 3vw, 2rem);
+      bottom: clamp(1rem, 2.2vh, 1.45rem);
+      z-index: 20;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.66rem;
+      color: var(--dim);
+      letter-spacing: 0.06em;
+    }
+
+    @media (max-width: 960px) {
+      .grid-2, .grid-3, .kpi, .title-grid { grid-template-columns: 1fr; }
+      .layer { grid-template-columns: 1fr; gap: 0.2rem; }
+      h1 { font-size: clamp(2.6rem, 11vw, 4rem); }
+      .hint { display: none; }
+      .slide { padding-bottom: 4.5rem; }
+    }
+
+    @keyframes floatIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .slide.active .anim { animation: floatIn 500ms ease both; }
+    .slide.active .anim.d1 { animation-delay: 70ms; }
+    .slide.active .anim.d2 { animation-delay: 140ms; }
+    .slide.active .anim.d3 { animation-delay: 210ms; }
+    .slide.active .anim.d4 { animation-delay: 280ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide, .slide.active, .slide.active .anim, .progress, .dots button {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+
+  <main class="deck" id="deck" aria-label="Sapporo Snow Festival 3D 技術解説スライド">
+
+    <!-- 01. Title -->
+    <section class="slide active" role="region" aria-roledescription="slide" aria-label="タイトル">
+      <header>
+        <div class="eyebrow anim">Technical Architecture Briefing</div>
+      </header>
+      <div class="slide-body">
+        <div class="title-grid">
+          <div>
+            <h1 class="anim d1">SAPPORO<br />SNOW FESTIVAL 3D</h1>
+            <p class="lede anim d2">
+              ブラウザの WebGL だけで動く、札幌雪まつり・実寸都市 3D ビューア。<br />
+              Three.js + Project PLATEAU 3D Tiles + 国土地理院地図/DEM + 地下鉄・JR 3D 運行の技術構成を図解します。
+            </p>
+            <div class="title-meta anim d3">
+              <span class="chip">Three.js 0.174</span>
+              <span class="chip">3d-tiles-renderer 0.5</span>
+              <span class="chip amber">PLATEAU 札幌全10区</span>
+              <span class="chip emerald">地下鉄全3線 + JR3線</span>
+              <span class="chip">esbuild 0.25</span>
+            </div>
+          </div>
+          <div class="diagram-box anim d3">
+            <svg class="diagram" viewBox="0 0 380 300" role="img" aria-label="主要技術要素の全体像">
+              <defs>
+                <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#6fd0f6" stop-opacity="0.28"/>
+                  <stop offset="100%" stop-color="#f4a853" stop-opacity="0.18"/>
+                </linearGradient>
+              </defs>
+              <rect x="18" y="18" width="344" height="58" rx="12" fill="url(#titleGrad)" stroke="#6fd0f6" stroke-width="1.2"/>
+              <text x="190" y="43" text-anchor="middle" font-size="13" font-weight="600">Cinema UI / Camera / WebM 録画</text>
+              <text x="190" y="62" text-anchor="middle" class="mono muted">7 Shots · 10区ジャンプ · 季節/天候 · 鉄道パネル</text>
+
+              <rect x="18" y="92" width="166" height="62" rx="12" fill="rgba(244,168,83,0.12)" stroke="#f4a853"/>
+              <text x="101" y="118" text-anchor="middle" font-size="12.5" font-weight="600">雪まつり演出</text>
+              <text x="101" y="138" text-anchor="middle" class="mono muted">大雪像 · TV塔 · 市電</text>
+
+              <rect x="196" y="92" width="166" height="62" rx="12" fill="rgba(52,211,153,0.12)" stroke="#34d399"/>
+              <text x="279" y="118" text-anchor="middle" font-size="12.5" font-weight="600">3D 鉄道・地下鉄</text>
+              <text x="279" y="138" text-anchor="middle" class="mono muted">46編成 · 地下透視</text>
+
+              <rect x="18" y="170" width="344" height="48" rx="12" fill="rgba(111,208,246,0.1)" stroke="rgba(111,208,246,0.55)"/>
+              <text x="190" y="199" text-anchor="middle" font-size="12.5">PLATEAU 3D Tiles（全10区）+ GLSL 建物シェーダ</text>
+
+              <rect x="18" y="232" width="344" height="48" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(147,170,194,0.35)"/>
+              <text x="190" y="261" text-anchor="middle" font-size="12.5">国土地理院 地図/DEM（2重リング）+ 遠景山岳</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>sapporo-snow-festival-3d</span><span>01 / 11</span></footer>
+    </section>
+
+    <!-- 02. Overview -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="プロジェクト概要">
+      <header>
+        <div class="eyebrow">01 — Overview</div>
+        <h2>何をつくっているか <span class="sub-en">CLIENT-ONLY 3D VIEWER</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="stack anim">
+            <p class="lede" style="margin:0">
+              サーバー側ロジックを持たず、ブラウザ上の WebGL だけで都市・雪まつり・鉄道運行を描画するクライアント完結アプリです。
+            </p>
+            <ul class="bullet" style="margin-top:0.6rem">
+              <li><b>Stylized 版（index.html）</b>… 手続き生成の街区・雪像・車列による近景シネマ表現</li>
+              <li><b>PLATEAU 版（plateau.html）</b>… 実測 1m スケールの札幌全10区 3D 都市に、雪まつり・国土地理院地図/DEM・地下鉄/JR を統合</li>
+              <li><b>ブラウザ完結 UI</b>… シネマカメラ、自由ドローン、10区・現在地ジャンプ、季節/天候、WebM 録画（MediaRecorder）を内蔵</li>
+            </ul>
+          </div>
+          <div class="diagram-box anim d2">
+            <svg class="diagram" viewBox="0 0 500 320" role="img" aria-label="ランタイム構成図">
+              <defs>
+                <marker id="arrIce" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#6fd0f6"/>
+                </marker>
+                <marker id="arrAmb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#f4a853"/>
+                </marker>
+              </defs>
+
+              <rect x="20" y="24" width="185" height="120" rx="14" fill="rgba(111,208,246,0.12)" stroke="#6fd0f6" stroke-width="1.4"/>
+              <text x="112" y="54" text-anchor="middle" class="mono" fill="#6fd0f6">Browser (Client)</text>
+              <text x="112" y="80" text-anchor="middle" font-size="13" font-weight="600">Three.js + WebGL</text>
+              <text x="112" y="102" text-anchor="middle" font-size="11.5" class="muted">EffectComposer / Bloom</text>
+              <text x="112" y="122" text-anchor="middle" font-size="11.5" class="muted">MediaRecorder (WebM)</text>
+
+              <rect x="275" y="24" width="205" height="120" rx="14" fill="rgba(244,168,83,0.1)" stroke="#f4a853" stroke-width="1.2"/>
+              <text x="377" y="52" text-anchor="middle" class="mono" fill="#f4a853">Runtime Open Data</text>
+              <text x="377" y="78" text-anchor="middle" font-size="12.5">PLATEAU 3D Tiles (CDN)</text>
+              <text x="377" y="100" text-anchor="middle" font-size="12.5">国土地理院 地図・航空写真</text>
+              <text x="377" y="122" text-anchor="middle" font-size="12.5">国土地理院 dem_png (標高)</text>
+
+              <path d="M208 84 H266" stroke="#f4a853" stroke-width="2" marker-end="url(#arrAmb)"/>
+              <text x="237" y="75" text-anchor="middle" class="mono muted">fetch</text>
+
+              <rect x="20" y="186" width="460" height="108" rx="14" fill="rgba(8,20,36,0.8)" stroke="rgba(111,208,246,0.3)"/>
+              <text x="42" y="214" class="mono" fill="#6fd0f6">Static Assets (dist/ + CDN CSS)</text>
+              <text x="42" y="240" font-size="12.5" class="muted">• dist/index.html・dist/plateau.html（アプリJSをIIFEインライン埋め込み）</text>
+              <text x="42" y="262" font-size="12.5" class="muted">• dist/draco/（Draco WASM デコーダをローカル配信）＋ Tailwind CSS CDN</text>
+              <text x="42" y="282" font-size="11.5" class="mono muted">serve.mjs → http://127.0.0.1:4173（バックエンドAPI不要）</text>
+
+              <path d="M112 184 V152" stroke="#6fd0f6" stroke-width="2" marker-end="url(#arrIce)"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>静的配信 + オープンデータ直接ストリーミング</span><span>02 / 11</span></footer>
+    </section>
+
+    <!-- 03. Two products -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="2つの体験入口">
+      <header>
+        <div class="eyebrow">02 — Dual Entry</div>
+        <h2>2つの体験入口 <span class="sub-en">STYLIZED &amp; PLATEAU</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card accent-ice anim">
+            <span class="tag">index.html</span>
+            <h3>Stylized Cinema（通常版）</h3>
+            <p>
+              手続き生成の街区（300+ InstancedMesh ビル）・大雪像・赤れんが庁舎・時計台・市電・車列を構築。近景の映画的ショット（6カット）向けの相対スケール。
+            </p>
+            <div class="code" style="margin-top:0.8rem">src/main.js
+  + sapporoCity.js / snowSculptures.js
+  → template.html → dist/index.html</div>
+          </div>
+          <div class="card accent-amber anim d2">
+            <span class="tag amber">plateau.html</span>
+            <h3>Real-scale PLATEAU（実寸都市版）</h3>
+            <p>
+              札幌全市10区の公式 PLATEAU 3D Tiles（<b>1単位 = 1m</b>）。国土地理院の地図・標高、季節・天候、大通雪まつり、地下鉄全3線＋JR3線を実座標で統合。
+            </p>
+            <div class="code" style="margin-top:0.8rem">src/plateau/main.js
+  + geo / plateauTiles / mapGround / railNetwork
+  → template-plateau.html → dist/plateau.html</div>
+          </div>
+        </div>
+        <div class="kpi anim d3">
+          <div class="card"><strong>10区</strong><span>PLATEAU 札幌全市タイル</span></div>
+          <div class="card"><strong>1 : 1 m</strong><span>実寸 WGS84→ENU 座標</span></div>
+          <div class="card"><strong>46 編成</strong><span>地下鉄3線 + JR3線 同時運行</span></div>
+          <div class="card"><strong>7 Shots</strong><span>自動シネマ + 自由ドローン</span></div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>build.mjs が両エントリを並列・連続ビルド</span><span>03 / 11</span></footer>
+    </section>
+
+    <!-- 04. Architecture -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="レイヤ構成">
+      <header>
+        <div class="eyebrow">03 — Architecture</div>
+        <h2>レイヤ構成 <span class="sub-en">SCENE GRAPH STACK</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="layer-list anim">
+            <div class="layer"><b>UI / Cinema</b><span>7ショット切替・10区/現在地・季節/天候・鉄道パネル・WebM録画</span></div>
+            <div class="layer"><b>Camera</b><span>OrbitControls + 5次 <code class="inline">smootherstep</code> 補間 + Ease-out フライト</span></div>
+            <div class="layer"><b>Festival</b><span>大雪像3基・実寸147m TV塔・プロジェクション・車列・市電</span></div>
+            <div class="layer"><b>Rail Network</b><span>地下鉄全3路線・JR3路線の高架/地下軌道 + InstancedMesh 列車</span></div>
+            <div class="layer"><b>City Buildings</b><span>PLATEAU 3D Tiles（全10区）+ カスタム GLSL 建物シェーダ</span></div>
+            <div class="layer"><b>Ground &amp; DEM</b><span>国土地理院 2重リング地図/DEM + 遠景山岳メッシュ</span></div>
+            <div class="layer"><b>Post Process</b><span>WebGL → RenderPass → UnrealBloom → OutputPass (ACES)</span></div>
+          </div>
+          <div class="diagram-box anim d2">
+            <svg class="diagram" viewBox="0 0 460 368" role="img" aria-label="シーン構成レイヤ図">
+              <rect x="28" y="16" width="404" height="44" rx="10" fill="rgba(111,208,246,0.16)" stroke="#6fd0f6"/>
+              <text x="230" y="43" text-anchor="middle" font-size="13.5" font-weight="600">Cinema HUD / Camera Director / Recorder</text>
+
+              <rect x="40" y="72" width="380" height="44" rx="10" fill="rgba(244,168,83,0.14)" stroke="#f4a853"/>
+              <text x="230" y="99" text-anchor="middle" font-size="13.5">Snow Festival Overlay（festivalOverlay.js）</text>
+
+              <rect x="52" y="128" width="356" height="44" rx="10" fill="rgba(52,211,153,0.15)" stroke="#34d399"/>
+              <text x="230" y="155" text-anchor="middle" font-size="13.5">Subway &amp; JR 3D Network（railNetwork.js）</text>
+
+              <rect x="64" y="184" width="332" height="44" rx="10" fill="rgba(111,208,246,0.12)" stroke="rgba(111,208,246,0.55)"/>
+              <text x="230" y="211" text-anchor="middle" font-size="13.5">PLATEAU 3D Tiles（plateauTiles.js + winterMaterial.js）</text>
+
+              <rect x="76" y="240" width="308" height="44" rx="10" fill="rgba(167,139,250,0.12)" stroke="#a78bfa"/>
+              <text x="230" y="267" text-anchor="middle" font-size="13.5">GSI Map/DEM（mapGround.js）+ 山岳（terrain.js）</text>
+
+              <rect x="88" y="296" width="284" height="48" rx="10" fill="rgba(255,255,255,0.06)" stroke="rgba(232,240,248,0.32)"/>
+              <text x="230" y="318" text-anchor="middle" font-size="13.5" font-weight="600">Three.js Scene + EffectComposer</text>
+              <text x="230" y="335" text-anchor="middle" class="mono muted">Common 1m Local Coordinate Frame (geo.js)</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>共通の1m実座標フレーム上に全レイヤを位置合わせ</span><span>04 / 11</span></footer>
+    </section>
+
+    <!-- 05. Coordinates (FIXED 3D Isometric SVG!) -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="座標系と測地変換">
+      <header>
+        <div class="eyebrow">04 — Geodesy &amp; Coordinates</div>
+        <h2>座標系の考え方 <span class="sub-en">WGS84 → ECEF → LOCAL ENU</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="stack anim">
+            <p class="lede" style="margin:0">
+              原点は<b>大通公園西4丁目</b>（標高約22m + ジオイド高約33m = 楕円体高 55.2m）。<code class="inline">WGS84_ELLIPSOID</code> で ECEF から右手系ローカル座標（1単位 = 1m）へ変換します。
+            </p>
+            <ul class="bullet" style="margin-top:0.5rem">
+              <li><b>+X</b> = 真東（East, m） / <b>+Y</b> = 鉛直上向き（Up, m）</li>
+              <li><b>+Z</b> = 真南（South = -North, m：右手系 <code class="inline">East × Up = South</code>）</li>
+              <li><b>大通グリッド回転</b>：Y軸まわりに水平 <b style="color:var(--amber)">+9.7°（反時計回り）</b> 回転し、大通公園（東北東）と駅前通（南南東）に整列</li>
+              <li>建物読み込み時に大通近傍の建物底面をサンプリングし、接地高度を自動キャリブレーション</li>
+            </ul>
+            <div class="code">ORIGIN = { lat: 43.06048, lon: 141.35145, height: 55.2 }
+ODORI_ROT_Y = 9.7 * Math.PI / 180</div>
+          </div>
+          <div class="diagram-box anim d2">
+            <!-- Properly projected 3D right-handed coordinate axes + horizontal XZ ground grid -->
+            <svg class="diagram" viewBox="0 0 480 340" role="img" aria-label="3D右手系ローカル座標軸と水平面での大通9.7度回転図">
+              <defs>
+                <marker id="axX" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#6fd0f6"/></marker>
+                <marker id="axY" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/></marker>
+                <marker id="axZ" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#f4a853"/></marker>
+                <marker id="axO" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L5,3 L0,6 Z" fill="#fbbf24"/></marker>
+              </defs>
+
+              <!-- Horizontal Ground Plane (X-Z plane in isometric projection) -->
+              <polygon points="240,128 422,190 240,266 58,204" fill="rgba(111,208,246,0.06)" stroke="rgba(111,208,246,0.28)" stroke-dasharray="4 3"/>
+              <text x="128" y="152" class="mono muted">Horizontal Ground Plane (Y = 0)</text>
+
+              <!-- Faint North (-Z) reference dashed line -->
+              <line x1="240" y1="196" x2="322" y2="152" stroke="rgba(147,170,194,0.32)" stroke-width="1.5" stroke-dasharray="4 4"/>
+              <text x="328" y="148" class="mono muted">-Z North</text>
+
+              <!-- True East (+X): right-slightly-down in isometric plane -->
+              <line x1="240" y1="196" x2="394" y2="216" stroke="#6fd0f6" stroke-width="2.6" marker-end="url(#axX)"/>
+              <text x="400" y="220" class="mono" fill="#6fd0f6">+X East</text>
+
+              <!-- True Up (+Y): straight up -->
+              <line x1="240" y1="196" x2="240" y2="48" stroke="#34d399" stroke-width="2.8" marker-end="url(#axY)"/>
+              <text x="250" y="58" class="mono" fill="#34d399">+Y Up (標高)</text>
+
+              <!-- True South (+Z): down-left in isometric plane (orthogonal to +X and +Y!) -->
+              <line x1="240" y1="196" x2="124" y2="256" stroke="#f4a853" stroke-width="2.6" marker-end="url(#axZ)"/>
+              <text x="64" y="274" class="mono" fill="#f4a853">+Z South</text>
+
+              <!-- Rotated Odori Park Axis (+9.7 deg CCW around Y -> ENE on horizontal X-Z plane) -->
+              <line x1="240" y1="196" x2="386" y2="184" stroke="#fbbf24" stroke-width="2.2" stroke-dasharray="6 3" marker-end="url(#axO)"/>
+              <text x="348" y="176" class="mono" fill="#fbbf24">大通軸 (ENE)</text>
+
+              <!-- Horizontal rotation arc between +X (East) and Odori Axis in X-Z plane -->
+              <path d="M332,208 A94,38 0 0 0 334,188" fill="none" stroke="#fbbf24" stroke-width="2"/>
+              <text x="342" y="201" class="mono" fill="#fbbf24">+9.7° (Y軸回転)</text>
+
+              <!-- Origin Marker -->
+              <circle cx="240" cy="196" r="6" fill="#f8fbff" stroke="#6fd0f6" stroke-width="2"/>
+              <rect x="132" y="294" width="216" height="30" rx="8" fill="rgba(8,20,36,0.85)" stroke="rgba(111,208,246,0.35)"/>
+              <text x="240" y="313" text-anchor="middle" class="mono" fill="#ecf3fb">Origin (0, 0, 0) = 大通西4丁目</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>src/plateau/geo.js · ECEF_TO_LOCAL</span><span>05 / 11</span></footer>
+    </section>
+
+    <!-- 06. PLATEAU 3D Tiles -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="PLATEAU 3D Tiles ストリーミング">
+      <header>
+        <div class="eyebrow">05 — City Streaming</div>
+        <h2>PLATEAU 3D Tiles <span class="sub-en">SSE &amp; LRU STREAMING</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="stack anim">
+            <p class="lede" style="margin:0">
+              国土交通省 Project PLATEAU（札幌市 01100）の全10区 <code class="inline">tileset.json</code> を <code class="inline">3d-tiles-renderer</code> で並列ストリーミングします。
+            </p>
+            <ul class="bullet" style="margin-top:0.5rem">
+              <li><b>LOD2 優先 + 自動フォールバック</b>：中央・北・東・西区はテクスチャ付き LOD2、他6区は LOD1 を自動組合せ</li>
+              <li><b>動的エラー目標（SSE）</b>：各区中心からのカメラ距離と移動速度に応じて <code class="inline">errorTarget</code>（7.5〜18+）を毎フレーム調整</li>
+              <li><b>欠損防止 &amp; メモリ制御</b>：<code class="inline">loadSiblings: true</code> で区境の抜けを防ぎ、LRU キャッシュ（1800〜3200）でタイルを管理</li>
+              <li><b>ローカル Draco 展開</b>：<code class="inline">dist/draco/</code> の WASM デコーダで glTF ジオメトリを高速展開</li>
+            </ul>
+          </div>
+          <div class="diagram-box anim d2">
+            <svg class="diagram" viewBox="0 0 480 326" role="img" aria-label="3D Tiles SSEとLRUストリーミング図">
+              <text x="24" y="30" class="mono" fill="#6fd0f6">10 Wards × TilesRenderer → Screen Space Error (SSE)</text>
+
+              <!-- Far -->
+              <rect x="24" y="48" width="118" height="92" rx="10" fill="rgba(111,208,246,0.08)" stroke="#6fd0f6"/>
+              <text x="83" y="88" text-anchor="middle" font-size="13" font-weight="600">遠景の区</text>
+              <text x="83" y="108" text-anchor="middle" class="mono muted">dist &gt; 7.5km</text>
+              <text x="83" y="126" text-anchor="middle" class="mono" fill="#6fd0f6">err = 18.0</text>
+
+              <!-- Mid -->
+              <g transform="translate(166,48)">
+                <rect width="58" height="43" rx="6" fill="rgba(111,208,246,0.14)" stroke="#6fd0f6"/>
+                <rect x="64" width="58" height="43" rx="6" fill="rgba(111,208,246,0.14)" stroke="#6fd0f6"/>
+                <rect y="49" width="58" height="43" rx="6" fill="rgba(111,208,246,0.14)" stroke="#6fd0f6"/>
+                <rect x="64" y="49" width="58" height="43" rx="6" fill="rgba(111,208,246,0.14)" stroke="#6fd0f6"/>
+              </g>
+              <text x="227" y="158" text-anchor="middle" class="mono muted">中景 (err = 12.0)</text>
+
+              <!-- Near -->
+              <g transform="translate(314,48)">
+                <rect width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="36" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="72" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="108" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect y="24" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="36" y="24" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="72" y="24" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="108" y="24" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect y="48" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="36" y="48" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="72" y="48" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="108" y="48" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect y="72" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="36" y="72" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="72" y="72" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+                <rect x="108" y="72" width="32" height="20" rx="3" fill="rgba(244,168,83,0.26)" stroke="#f4a853"/>
+              </g>
+              <text x="384" y="158" text-anchor="middle" class="mono" fill="#f4a853">近景 LOD2 (err = 7.5)</text>
+
+              <!-- Pipeline footer inside diagram -->
+              <rect x="24" y="184" width="432" height="122" rx="12" fill="rgba(8,20,36,0.82)" stroke="rgba(111,208,246,0.28)"/>
+              <text x="42" y="212" class="mono" fill="#34d399">load-model Hook:</text>
+              <text x="42" y="236" font-size="12.5">1. Draco デコード済み glTF へ <tspan fill="#6fd0f6">applyWinterStyleToModel()</tspan> を適用</text>
+              <text x="42" y="260" font-size="12.5">2. 大通周辺の建物底面サンプルから楕円体高を自動微調整</text>
+              <text x="42" y="286" class="mono muted">Queue: download 36並列 / parse 12並列 · LRU Cache 1800–3200</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>src/plateau/plateauTiles.js</span><span>06 / 11</span></footer>
+    </section>
+
+    <!-- 07. Scene Contents (ALL 4 Technical Fixes Applied!) -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="シーン構成要素">
+      <header>
+        <div class="eyebrow">06 — Scene Modules</div>
+        <h2>何を重ねているか <span class="sub-en">6 INTEGRATED SUBSYSTEMS</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-3">
+          <div class="card anim">
+            <span class="tag">Ground &amp; DEM</span>
+            <h3>2重リング地図 + 遠景山岳</h3>
+            <p>
+              <b>国土地理院 2重リング</b>（近景 z=16 / 遠景 z=13）を <code class="inline">dem_png</code> で頂点変位して道路地図・航空写真を描画。別レイヤで<b>藻岩山・手稲山</b>の遠景山岳を頂点カラーで配置。
+            </p>
+          </div>
+          <div class="card anim d1">
+            <span class="tag">Building Shader</span>
+            <h3>GLSL カスタム建物表現</h3>
+            <p>
+              <code class="inline">onBeforeCompile</code> で接地AO・LOD2ガラス面の自動反射・LOD1の手続きファサード生成・季節連動の屋根積雪・夜間窓発光・ホワイト模型切替を実現。
+            </p>
+          </div>
+          <div class="card accent-amber anim d2">
+            <span class="tag amber">Overlay</span>
+            <h3>雪まつり演出（冬連動）</h3>
+            <p>
+              大通4・5・7丁目の大雪像3基（城のライブプロジェクションマッピング）、実寸147m TV塔の電光時計、すすきの氷像・ネオン、車両・市電を実寸配置。
+            </p>
+          </div>
+          <div class="card accent-emerald anim d1">
+            <span class="tag emerald">Transit</span>
+            <h3>地下鉄全3線 + JR 3D 運行</h3>
+            <p>
+              南北・東西・東豊線（49駅）と JR3路線を <code class="inline">CatmullRomCurve3</code> 高架/地下軌道と <b>InstancedMesh 46編成</b>で駅停車付き運行。地下透視モード対応。
+            </p>
+          </div>
+          <div class="card anim d2">
+            <span class="tag">Atmosphere</span>
+            <h3>空シェーダ &amp; 季節降水</h3>
+            <p>
+              半径36km スカイドームの GLSL（<b>雲量 <code class="inline">uCloudCover</code>・曇天度 <code class="inline">uOvercast</code></b>・星・太陽散乱）と、雪・雨スジ・桜吹雪・落葉パーティクルを制御。
+            </p>
+          </div>
+          <div class="card anim d3">
+            <span class="tag">Cinema UI</span>
+            <h3>カメラ・季節・録画 UI</h3>
+            <p>
+              7ショット自動演出、画面内カメラパッド、札幌全10区・Geolocation 現在地ジャンプ、春夏秋冬×4天候×4時間帯切替、WebM 録画を搭載。
+            </p>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>オープンデータ × GLSL シェーダ × リアルタイム演出</span><span>07 / 11</span></footer>
+    </section>
+
+    <!-- 08. NEW Dedicated Transit & Underground X-Ray Slide -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="地下鉄・JR 3D運行と地下透視">
+      <header>
+        <div class="eyebrow">07 — Rail &amp; Underground X-Ray</div>
+        <h2>地下鉄全3路線 &amp; JR の 3D 可視化 <span class="sub-en">MULTI-LEVEL TRANSIT</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="stack anim">
+            <p class="lede" style="margin:0">
+              札幌市の地下・地上・高架にまたがる鉄道網を実 WGS84 駅座標と国土地理院 DEM 標高に沿って再現し、全46編成をリアルタイム運行します。
+            </p>
+            <div class="rail-badges">
+              <span class="rail-pill"><span class="rail-dot" style="background:var(--namboku)"></span>南北線 16駅（5000形・高架シェルター付）</span>
+              <span class="rail-pill"><span class="rail-dot" style="background:var(--tozai)"></span>東西線 19駅（8000形）</span>
+              <span class="rail-pill"><span class="rail-dot" style="background:var(--toho)"></span>東豊線 14駅（9000形）</span>
+              <span class="rail-pill"><span class="rail-dot" style="background:var(--jr)"></span>JR函館・千歳・学園都市線</span>
+            </div>
+            <ul class="bullet" style="margin-top:0.35rem">
+              <li><b>2段階の地下透視</b>：通常時は <code class="inline">THREE.GreaterDepth</code> パスで地面・建物に遮蔽された地下列車のみ透過発光。<b>地下透視モード</b>では地面自体を半透明化（ガラス床カットアウェイ）</li>
+              <li><b>低負荷 60 FPS 描画</b>：全46編成（約250両）の車体・ライン帯・発光窓・前後ライトを少数の <code class="inline">InstancedMesh</code> で一括更新し、カーブに追従</li>
+              <li><b>リアルな加減速＆駅停車</b>：駅間距離から所要時間と停車（dwell）を計算し、複線左側通行ですれ違い運行</li>
+            </ul>
+          </div>
+          <div class="diagram-box anim d2">
+            <!-- Vertical Cross-Section of Sapporo Rail Elevation Levels -->
+            <svg class="diagram" viewBox="0 0 470 340" role="img" aria-label="札幌のJR高架・地表・地下鉄3階層断面図">
+              <text x="20" y="26" class="mono" fill="#6fd0f6">Sapporo Vertical Profile (relative to local DEM ground)</text>
+
+              <!-- JR Elevated Viaduct -->
+              <rect x="24" y="46" width="422" height="44" rx="8" fill="rgba(34,197,94,0.14)" stroke="#22c55e"/>
+              <text x="38" y="66" font-size="12.5" font-weight="600" fill="#86efac">JR札幌高架 / 南北線シェルター高架（南平岸〜真駒内）</text>
+              <text x="38" y="83" class="mono muted">+8.2m 〜 +8.8m · コンクリート高架橋・橋脚・アルミシェルター</text>
+
+              <!-- Ground Level (0m) -->
+              <line x1="20" y1="112" x2="450" y2="112" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="6 4"/>
+              <rect x="148" y="99" width="174" height="24" rx="12" fill="#0b182b" stroke="#6fd0f6"/>
+              <text x="235" y="115" text-anchor="middle" class="mono" fill="#ecf3fb">Ground 0m（GSI地図・大通）</text>
+
+              <!-- Underground Depth Indicator -->
+              <text x="24" y="138" class="mono muted">Underground（通常時: GreaterDepth 透視 / 透視時: 地面半透明）</text>
+
+              <!-- Namboku -11m -->
+              <rect x="24" y="150" width="422" height="46" rx="8" fill="rgba(0,184,92,0.16)" stroke="#00b85c"/>
+              <circle cx="44" cy="173" r="6" fill="#00b85c"/>
+              <text x="60" y="170" font-size="13" font-weight="600">南北線（N01 麻生 ↔ N16 真駒内）</text>
+              <text x="60" y="187" class="mono muted">地下 -11m（最浅層）· 大通西4丁目直下 · 6両編成 × 8本</text>
+
+              <!-- Tozai -16m -->
+              <rect x="24" y="208" width="422" height="46" rx="8" fill="rgba(245,158,11,0.15)" stroke="#f59e0b"/>
+              <circle cx="44" cy="231" r="6" fill="#f59e0b"/>
+              <text x="60" y="228" font-size="13" font-weight="600">東西線（T01 宮の沢 ↔ T19 新さっぽろ）</text>
+              <text x="60" y="245" class="mono muted">地下 -16m（中層）· 大通公園直下を東西横断 · 7両編成 × 10本</text>
+
+              <!-- Toho -21m -->
+              <rect x="24" y="266" width="422" height="46" rx="8" fill="rgba(14,165,233,0.16)" stroke="#0ea5e9"/>
+              <circle cx="44" cy="289" r="6" fill="#0ea5e9"/>
+              <text x="60" y="286" font-size="13" font-weight="600">東豊線（H01 栄町 ↔ H14 福住）</text>
+              <text x="60" y="303" class="mono muted">地下 -21m（最深層）· 大通西2丁目直下 · 4両編成 × 8本</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>src/plateau/railData.js · railNetwork.js</span><span>08 / 11</span></footer>
+    </section>
+
+    <!-- 09. Render Pipeline -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="描画パイプライン">
+      <header>
+        <div class="eyebrow">08 — Rendering</div>
+        <h2>描画・ライティングパイプライン <span class="sub-en">EFFECT COMPOSER</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="flow-row anim">
+          <span class="chip">3D Scene</span><span class="arrow">→</span>
+          <span class="chip">RenderPass</span><span class="arrow">→</span>
+          <span class="chip amber">UnrealBloomPass</span><span class="arrow">→</span>
+          <span class="chip emerald">OutputPass (ACES + sRGB)</span><span class="arrow">→</span>
+          <span class="chip">WebGL Canvas</span>
+        </div>
+        <div class="grid-2" style="margin-top:0.4rem">
+          <ul class="bullet anim d1">
+            <li><b>ACES Filmic トーンマップ</b>：高輝度のネオン・雪像ライト・列車ヘッドライトが白飛びせず映画的な階調に収束</li>
+            <li><b>PMREM 環境マップ</b>：<code class="inline">RoomEnvironment</code> により氷像・創成川・ビルガラス・雨天の濡れた路面に自然な反射を付与</li>
+            <li><b>PCF Soft Shadow + 16m スナップ</b>：太陽シャドウカメラを注視点へ16m刻みで追従させ、全10区移動時も影のチラつき（texel swimming）を防止</li>
+            <li><b>指数フォグ（FogExp2）</b>：時間帯と天候（快晴/曇り/雨/雪）で密度と色を連動制御</li>
+          </ul>
+          <div class="diagram-box anim d2">
+            <svg class="diagram" viewBox="0 0 460 220" role="img" aria-label="ポストプロセスフロー図">
+              <defs>
+                <marker id="arrPipe" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#6fd0f6"/>
+                </marker>
+              </defs>
+              <rect x="16" y="34" width="114" height="150" rx="12" fill="rgba(111,208,246,0.1)" stroke="#6fd0f6"/>
+              <text x="73" y="96" text-anchor="middle" font-size="13" font-weight="600">RenderPass</text>
+              <text x="73" y="118" text-anchor="middle" font-size="11" class="muted">PBR + Shadow</text>
+              <text x="73" y="136" text-anchor="middle" font-size="11" class="muted">GreaterDepth</text>
+
+              <path d="M134 109 H162" stroke="#6fd0f6" stroke-width="2" marker-end="url(#arrPipe)"/>
+
+              <rect x="168" y="34" width="116" height="150" rx="12" fill="rgba(244,168,83,0.12)" stroke="#f4a853"/>
+              <text x="226" y="96" text-anchor="middle" font-size="13" font-weight="600">UnrealBloom</text>
+              <text x="226" y="118" text-anchor="middle" font-size="11" class="muted">高輝度抽出</text>
+              <text x="226" y="136" text-anchor="middle" font-size="11" class="muted">時間帯で強度可変</text>
+
+              <path d="M288 109 H316" stroke="#6fd0f6" stroke-width="2" marker-end="url(#arrPipe)"/>
+
+              <rect x="322" y="34" width="122" height="150" rx="12" fill="rgba(52,211,153,0.12)" stroke="#34d399"/>
+              <text x="383" y="96" text-anchor="middle" font-size="13" font-weight="600">OutputPass</text>
+              <text x="383" y="118" text-anchor="middle" font-size="11" class="muted">ACES Filmic</text>
+              <text x="383" y="136" text-anchor="middle" font-size="11" class="muted">Linear → sRGB</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>EffectComposer · RoomEnvironment · PCFSoftShadowMap</span><span>09 / 11</span></footer>
+    </section>
+
+    <!-- 10. Build & Delivery -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="ビルドと配信">
+      <header>
+        <div class="eyebrow">09 — Tooling &amp; Delivery</div>
+        <h2>ビルドと静的配信 <span class="sub-en">ESBUILD PIPELINE</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="stack anim">
+            <div class="flow-row">
+              <span class="chip">src/**/*.js</span><span class="arrow">→</span>
+              <span class="chip">esbuild (es2022)</span><span class="arrow">→</span>
+              <span class="chip amber">IIFE minified</span>
+            </div>
+            <div class="flow-row">
+              <span class="chip">template*.html</span><span class="arrow">→</span>
+              <span class="chip">&lt;!--__BUNDLE__--&gt;</span><span class="arrow">→</span>
+              <span class="chip emerald">dist/*.html</span>
+            </div>
+            <ul class="bullet" style="margin-top:0.5rem">
+              <li>Three.js や 3d-tiles-renderer を含む依存を 1 本の IIFE にバンドル・minify して HTML へインライン展開</li>
+              <li><code class="inline">node_modules/three/.../draco/gltf</code> から Draco WASM 3ファイルを <code class="inline">dist/draco/</code> へ自動コピー</li>
+              <li><code class="inline">serve.mjs</code> が <code class="inline">dist/</code> をローカル HTTP（既定 <code class="inline">127.0.0.1:4173</code>）で配信</li>
+              <li>出力は静的ファイル群のみのため、任意の静的ホスティングへそのまま配置可能</li>
+            </ul>
+          </div>
+          <div class="card accent-ice anim d2">
+            <span class="tag">Commands</span>
+            <h3>開発・ビルドコマンド</h3>
+            <div class="code" style="margin-top:0.55rem">npm install        # 依存インストール
+npm run build      # dist/index.html + plateau.html + draco/
+npm run preview    # build + ローカルサーバ起動 (:4173)</div>
+            <div class="code" style="margin-top:0.75rem; color: var(--muted)">dist/
+├── index.html     (~612 KB · Stylized)
+├── plateau.html   (~850 KB · PLATEAU + Rail)
+└── draco/         (draco_decoder.wasm / .js)</div>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>build.mjs / serve.mjs / package.json</span><span>10 / 11</span></footer>
+    </section>
+
+    <!-- 11. Recap -->
+    <section class="slide" role="region" aria-roledescription="slide" aria-label="まとめ">
+      <header>
+        <div class="eyebrow">10 — Takeaways</div>
+        <h2>要点まとめ <span class="sub-en">KEY ARCHITECTURE POINTS</span></h2>
+      </header>
+      <div class="slide-body">
+        <div class="grid-2">
+          <ul class="bullet anim">
+            <li><b>2つの体験入口</b>：近景演出の Stylized 版（<code class="inline">index.html</code>）と実寸都市の PLATEAU 版（<code class="inline">plateau.html</code>）</li>
+            <li><b>測地基準の統一</b>：大通西4丁目原点の 1m 右手系座標（+9.7° 街区軸）に全レイヤを精密整列</li>
+            <li><b>全市ストリーミング</b>：3D Tiles（SSE + LRU）と国土地理院2重リング地図/DEMで札幌全10区を快適に描画</li>
+            <li><b>都市インフラの可視化</b>：地下鉄全3路線＋JR3路線の46編成運行と <code class="inline">GreaterDepth</code>／ガラス床による地下透視</li>
+            <li><b>軽量な静的構成</b>：esbuild で HTML 中心の静的アセットに集約し、サーバーレスで完結</li>
+          </ul>
+          <div class="card accent-amber anim d2">
+            <span class="tag amber">Source Map</span>
+            <h3>次に読むべき主要ファイル</h3>
+            <div class="code" style="margin-top:0.55rem">src/plateau/main.js           # 統括・天候・UI・ループ
+src/plateau/geo.js            # WGS84→ローカル座標系
+src/plateau/plateauTiles.js   # 全10区 3D Tiles 管理
+src/plateau/mapGround.js      # 国土地理院 地図/DEM
+src/plateau/winterMaterial.js # GLSL 建物シェーダ
+src/plateau/railNetwork.js    # 地下鉄全3線・JR 3D運行
+build.mjs                     # esbuild バンドラ</div>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>Sapporo Snow Festival 3D — Technical Briefing</span><span>11 / 11</span></footer>
+    </section>
+  </main>
+
+  <div class="hint" aria-hidden="true">← → / Space / 1–9 / スワイプで移動</div>
+
+  <nav class="dock" aria-label="スライドナビゲーション">
+    <button type="button" id="prev" aria-label="前のスライド">‹</button>
+    <div class="dots" id="dots" role="tablist" aria-label="スライド一覧"></div>
+    <span class="dock-counter" id="counter" aria-live="polite">01 / 11</span>
+    <button type="button" id="next" aria-label="次のスライド">›</button>
+  </nav>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const progress = document.getElementById('progress');
+    const dotsWrap = document.getElementById('dots');
+    const counter = document.getElementById('counter');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    let current = 0;
+
+    // Build clickable slide indicator dots
+    const dotButtons = slides.map((s, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', `スライド ${idx + 1}: ${s.getAttribute('aria-label') || ''}`);
+      btn.addEventListener('click', () => show(idx));
+      dotsWrap.appendChild(btn);
+      return btn;
+    });
+
+    function show(n, updateHash = true) {
+      current = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, idx) => {
+        const active = idx === current;
+        s.classList.toggle('active', active);
+        s.setAttribute('aria-hidden', active ? 'false' : 'true');
+      });
+      dotButtons.forEach((b, idx) => {
+        b.setAttribute('aria-current', idx === current ? 'true' : 'false');
+      });
+      progress.style.width = (((current + 1) / slides.length) * 100) + '%';
+      counter.textContent = `${String(current + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === slides.length - 1;
+      if (updateHash) {
+        history.replaceState(null, '', `#${current + 1}`);
+      }
+    }
+
+    prevBtn.addEventListener('click', () => show(current - 1));
+    nextBtn.addEventListener('click', () => show(current + 1));
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) {
+        e.preventDefault();
+        show(current + 1);
+      } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
+        e.preventDefault();
+        show(current - 1);
+      } else if (e.key === 'Home') {
+        show(0);
+      } else if (e.key === 'End') {
+        show(slides.length - 1);
+      } else if (e.key >= '1' && e.key <= '9') {
+        show(Number(e.key) - 1);
+      }
+    });
+
+    // Click right/left edge to navigate (ignore interactive elements)
+    document.getElementById('deck').addEventListener('click', (e) => {
+      if (e.target.closest('button, a, nav, .code')) return;
+      const x = e.clientX / window.innerWidth;
+      if (x > 0.65) show(current + 1);
+      else if (x < 0.35) show(current - 1);
+    });
+
+    // Touch swipe support for mobile / tablet
+    let touchStartX = 0;
+    let touchStartY = 0;
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    window.addEventListener('touchend', (e) => {
+      if (!e.changedTouches.length) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        show(dx < 0 ? current + 1 : current - 1);
+      }
+    }, { passive: true });
+
+    // Restore slide from URL hash (#1..#11)
+    const initialHash = Number(location.hash.replace('#', ''));
+    show(Number.isFinite(initialHash) && initialHash >= 1 ? initialHash - 1 : 0, false);
+  </script>
+</body>
+</html>
