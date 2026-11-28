@@ -27,6 +27,7 @@ import { createSapporoRailNetwork } from './railNetwork.js';
 import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
 import { createPlateauMoiwaRopeway } from './moiwaRopeway.js';
 import { createVisitorLayer } from './visitorLayer.js';
+import { createParksLayer } from './parksLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
 
 // ==================== DOM REFS ====================
@@ -64,6 +65,7 @@ const visitorListEl = document.getElementById('visitor-list');
 const visitorListCountEl = document.getElementById('visitor-list-count');
 const visitorDetailEl = document.getElementById('visitor-detail');
 const btnMap = document.getElementById('btn-map');
+const btnParks = document.getElementById('btn-parks');
 const btnStyle = document.getElementById('btn-style');
 const btnProj = document.getElementById('btn-proj');
 const btnScope = document.getElementById('btn-scope');
@@ -251,6 +253,7 @@ const festivalOverlay = createPlateauFestivalOverlay(scene, snowBump, projMappin
 const railNetwork = createSapporoRailNetwork(scene, mapGround);
 const moiwaRopeway = createPlateauMoiwaRopeway(scene, mapGround);
 const visitorLayer = createVisitorLayer(scene);
+const parksLayer = createParksLayer(scene);
 
 // ==================== 3D CURRENT LOCATION BEACON MARKER ====================
 const locMarker = new THREE.Group();
@@ -1250,6 +1253,26 @@ btnMap.addEventListener('click', () => {
   btnMap.textContent = MAP_STYLES[next].label;
   mapGround.update(controls.target);
 });
+
+function syncParksToggleBtn() {
+  if (!btnParks) return;
+  const on = parksLayer.isVisible();
+  btnParks.textContent = on ? '🌳 公園緑地 ON' : '🌳 公園緑地 OFF';
+  btnParks.className = 'ctrl-btn chip text-left' + (on ? ' soft-on' : '');
+}
+
+btnParks?.addEventListener('click', () => {
+  parksLayer.setVisible(!parksLayer.isVisible());
+  syncParksToggleBtn();
+  if (parksLayer.isVisible()) {
+    const src = parksLayer.source;
+    shotTitle.textContent = 'PARKS · 公園緑地';
+    shotSub.textContent = src
+      ? `${src.name}（${parksLayer.featureCount}件・都心）— ${src.provider}`
+      : `公園緑地ポリゴン ${parksLayer.featureCount}件（札幌市オープンデータ）`;
+  }
+});
+syncParksToggleBtn();
 
 btnStyle.addEventListener('click', () => {
   whiteModelMode = !whiteModelMode;
