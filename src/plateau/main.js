@@ -25,6 +25,7 @@ import { createMapGroundLayer, MAP_STYLES } from './mapGround.js';
 import { createPlateauFestivalOverlay } from './festivalOverlay.js';
 import { createSapporoRailNetwork } from './railNetwork.js';
 import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
+import { createPlateauMoiwaRopeway } from './moiwaRopeway.js';
 import { createVisitorLayer } from './visitorLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
 
@@ -248,6 +249,7 @@ const plateauCity = createPlateauCityManager({
 });
 const festivalOverlay = createPlateauFestivalOverlay(scene, snowBump, projMapping.texture);
 const railNetwork = createSapporoRailNetwork(scene, mapGround);
+const moiwaRopeway = createPlateauMoiwaRopeway(scene, mapGround);
 const visitorLayer = createVisitorLayer(scene);
 
 // ==================== 3D CURRENT LOCATION BEACON MARKER ====================
@@ -903,13 +905,31 @@ railViewButtons.forEach(btn => {
     activeWardId = null;
     activeLocationInfo = { title: v.title, sub: v.sub };
     controls.enabled = true;
+
+    // Prefer live ropeway midpoint (post-DEM) when jumping to the aerial tram overlook
+    let endPos = v.eye.clone();
+    let endTgt = v.tgt.clone();
+    if (btn.dataset.railView === 'moiwa-ropeway' && moiwaRopeway?.getViewpoint) {
+      const vp = moiwaRopeway.getViewpoint();
+      endPos = vp.eye.clone();
+      endTgt = vp.tgt.clone();
+    }
+
+    // Cancel intro / any in-flight camera move so the overlook always wins
+    if (flyAnim?.isIntro) {
+      introActive = false;
+      onIntroComplete?.();
+      onIntroComplete = null;
+    }
+
     flyAnim = {
       startPos: camera.position.clone(),
       startTgt: controls.target.clone(),
-      endPos: v.eye.clone(),
-      endTgt: v.tgt.clone(),
+      endPos,
+      endTgt,
       t: 0,
-      dur: 1.05,
+      dur: 1.35,
+      unlockControls: true,
     };
     refreshChromeUI();
   });
@@ -1742,6 +1762,7 @@ function animate(ts) {
 
   festivalOverlay.update(clockTime, env.night, env.clock, projEnabled);
   railNetwork.update(clockTime, env.night, camera.position);
+  moiwaRopeway.update(clockTime, env.night);
   visitorLayer.update(camera.position);
   updatePrecipitation(dt, clockTime, camera.position, snowAmount, activeWeather, activeSeason);
 

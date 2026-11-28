@@ -105,6 +105,28 @@ export const PLATEAU_SHOTS = [
     },
   },
   {
+    dur: 10.0,
+    title: 'MT. MOIWA ROPEWAY · AERIAL TRAM IN MOTION',
+    sub: '藻岩山ロープウェー（山麓↔中腹）とミニケーブルカー（中腹↔山頂）',
+    eval(u) {
+      const t = smoother(u);
+      // Mid-slope overlook east of the ropeway corridor (山麓→中腹→山頂)
+      return {
+        eye: [
+          lerp(-1200, -980, t),
+          lerp(260, 340, t),
+          lerp(3000, 3400, t),
+        ],
+        tgt: [
+          lerp(-1800, -2200, t),
+          lerp(220, 380, t),
+          lerp(3600, 4100, t),
+        ],
+        fov: lerp(44, 48, t),
+      };
+    },
+  },
+  {
     dur: 10.5,
     title: 'SAPPORO RAIL & SUBWAY NETWORK · JR × 全3路線',
     sub: 'JR札幌駅高架（函館・千歳・学園都市線）から大通直下の地下鉄3路線交差（南北・東西・東豊）へ',
