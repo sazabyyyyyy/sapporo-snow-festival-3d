@@ -403,6 +403,9 @@
               <button type="button" class="chip menu-toggle" data-menu-toggle>大気</button>
               <div class="menu-panel glass right" style="min-width:240px">
                 <div class="menu-title">Time / Season / Weather</div>
+                <button id="btn-live-time" type="button" class="ctrl-btn chip w-full text-left mb-1.5" title="Asia/Tokyo の現在時刻で太陽・昼夜・テレビ塔時計を同期">
+                  実時刻 OFF
+                </button>
                 <div class="seg w-full mb-1.5" id="time-bar">
                   <button data-time="0" class="ctrl-btn flex-1">夕方</button>
                   <button data-time="1" class="ctrl-btn flex-1">夜景</button>
@@ -420,6 +423,9 @@
                   <button data-weather="cloudy" class="ctrl-btn flex-1">曇</button>
                   <button data-weather="rain" class="ctrl-btn flex-1">雨</button>
                   <button data-weather="snow" class="ctrl-btn flex-1">雪</button>
+                </div>
+                <div id="weather-mode-note" class="text-[8px] text-slate-500 leading-snug mt-1.5">
+                  天候は手動（サンプル）。実時刻は時計・日照のみ連動。
                 </div>
               </div>
             </div>
