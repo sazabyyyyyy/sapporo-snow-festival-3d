@@ -191,22 +191,36 @@
       opacity: 0.82;
     }
 
-    #station-list {
+    #station-list, #visitor-list {
       max-height: 132px;
       overflow-y: auto;
       overscroll-behavior: contain;
       scrollbar-width: thin;
       scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
     }
-    #station-list::-webkit-scrollbar { width: 5px; }
-    #station-list::-webkit-scrollbar-thumb {
+    #station-list::-webkit-scrollbar,
+    #visitor-list::-webkit-scrollbar { width: 5px; }
+    #station-list::-webkit-scrollbar-thumb,
+    #visitor-list::-webkit-scrollbar-thumb {
       background: rgba(148, 163, 184, 0.4);
       border-radius: 999px;
     }
-    .station-item.active {
+    .station-item.active, .visitor-item.active {
       border-color: rgba(56, 189, 248, 0.65) !important;
       background: rgba(14, 165, 233, 0.22) !important;
       color: #e0f2fe !important;
+    }
+    #visitor-detail {
+      display: none;
+      font-size: 10px;
+      line-height: 1.45;
+      color: rgba(226, 232, 240, 0.9);
+    }
+    #visitor-detail.open { display: block; }
+    #visitor-detail a {
+      color: #7dd3fc;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     #sl-snow { accent-color: var(--primary); width: 88px; height: 18px; }
@@ -411,6 +425,7 @@
             </div>
 
             <button id="btn-rail-panel" class="chip">🚆 路線</button>
+            <button id="btn-visitor-panel" class="chip">📍 案内</button>
             <button id="btn-pad-toggle" class="chip">🎮</button>
             <button id="btn-guide" class="chip" title="操作ガイド">？</button>
             <button id="btn-scope" class="chip hide-sm">2.39</button>
@@ -463,6 +478,44 @@
           <div class="flex flex-col gap-0.5">
             <button data-cam-act="zoomIn" class="ctrl-btn w-7 h-9 rounded bg-sky-500/25 border border-sky-400/40 text-sky-100 font-bold">＋</button>
             <button data-cam-act="zoomOut" class="ctrl-btn w-7 h-9 rounded bg-slate-800/90 border border-white/15 font-bold">−</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visitor POI panel (collapsed by default) -->
+      <div id="visitor-panel-wrap" class="absolute bottom-14 right-2 z-21 text-[11px] flex flex-col items-end" style="z-index:21">
+        <div id="visitor-panel" class="hidden glass p-2 rounded-lg shadow-xl flex flex-col gap-1.5 text-white w-[268px] max-w-[82vw]">
+          <div class="flex items-center justify-between gap-2 pb-1 border-b border-white/10">
+            <span class="text-[10px] font-semibold tracking-wider text-slate-300">VISITOR</span>
+            <button id="btn-visitor-toggle" class="ctrl-btn chip text-[10px]">表示 OFF</button>
+          </div>
+          <div class="grid grid-cols-3 gap-1" id="visitor-kind-toggles">
+            <button data-visitor-kind="tourism" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-amber-400/50 bg-amber-500/20 text-amber-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#f59e0b] shrink-0"></span>観光
+            </button>
+            <button data-visitor-kind="toilet" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#34d399] shrink-0"></span>トイレ
+            </button>
+            <button data-visitor-kind="wifi" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-sky-400/50 bg-sky-500/20 text-sky-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#38bdf8] shrink-0"></span>Wi-Fi
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-1">
+            <button id="btn-visitor-winter" class="ctrl-btn chip text-[9px] px-1 py-0.5">冬季トイレのみ</button>
+            <select id="visitor-area-filter" class="chip text-[9px] px-1 py-0.5 bg-slate-900/80 text-slate-200 border border-white/15 rounded max-w-[9.5rem]">
+              <option value="all">エリア: すべて</option>
+            </select>
+          </div>
+          <div class="pt-1 border-t border-white/10">
+            <div class="flex items-center justify-between mb-1">
+              <div class="text-[9px] text-slate-400">スポット一覧</div>
+              <div id="visitor-list-count" class="text-[9px] text-slate-500">0</div>
+            </div>
+            <div id="visitor-list" class="flex flex-col gap-0.5"></div>
+          </div>
+          <div id="visitor-detail" class="pt-1 border-t border-white/10"></div>
+          <div class="text-[8px] text-slate-500 leading-snug pt-0.5">
+            出典: 札幌市オープンデータ（観光スポット／公衆無線LAN／中央区公園トイレ）
           </div>
         </div>
       </div>
@@ -522,7 +575,7 @@
       </div>
 
       <div class="pointer-events-none absolute bottom-12 right-2 z-20 text-[9px] text-white/55 px-1.5 py-0.5 rounded glass">
-        出典: PLATEAU / 国土地理院
+        出典: PLATEAU / 国土地理院 / 札幌市オープンデータ
       </div>
 
       <div id="cut-fade" class="pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity duration-200 z-10"></div>
