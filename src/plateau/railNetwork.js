@@ -10,6 +10,15 @@ import {
   createTrainLiveryTextures,
   resolveTrainLiveryKey,
 } from './trainModels.js';
+import {
+  fillStationArcs,
+  getTimetableVehicles,
+  lineHasTimetable,
+  getTimetableCredit,
+  getTokyoClockSec,
+  clockStringToSec,
+  formatClockSec,
+} from './timetableReplay.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -238,6 +247,11 @@ export function createSapporoRailNetwork(scene, mapGround) {
   };
 
   let railMode = 'on'; // 'on' | 'xray' | 'off'
+  /** When true, namboku + tram use official weekday timetable positions (st_time). */
+  let timetableReplay = false;
+  /** null = follow scene clock string / Tokyo local; otherwise fixed sec-of-day */
+  let timetableClockSec = null;
+  let lastSceneClockStr = null;
   const lineEntries = [];
   // One floating label per unique stop name (shared JR / transfer hubs would otherwise stack)
   const placedStationLabels = new Set();
@@ -561,6 +575,8 @@ export function createSapporoRailNetwork(scene, mapGround) {
     entry.samples = samples;
     entry.sampleArcLens = sampleArcLens;
     entry.schedule = buildStationSchedule(curve, stationArcLengths, accLen, spec.speedMps, spec.dwellSec, isClosed);
+    // Station code → arc-length map for official timetable replay (st_time)
+    fillStationArcs(entry, rawPts);
 
     // 2. Build Track Bed / Tunnel / Glowing Guideway Ribbon
     const isSubway = spec.group === 'subway';
@@ -1103,8 +1119,34 @@ export function createSapporoRailNetwork(scene, mapGround) {
     }
   }
 
-  function update(time, nightFactor, cameraPos) {
+  const DAY_SEC = 24 * 3600;
+
+  function setTimetableReplay(enabled) {
+    timetableReplay = Boolean(enabled);
+  }
+
+  function setTimetableClockSec(sec) {
+    if (sec == null || !Number.isFinite(sec)) {
+      timetableClockSec = null;
+      return;
+    }
+    timetableClockSec = ((sec % DAY_SEC) + DAY_SEC) % DAY_SEC;
+  }
+
+  function resolveTimetableClockSec(sceneClockStr) {
+    if (timetableClockSec != null) return timetableClockSec;
+    if (sceneClockStr) {
+      lastSceneClockStr = sceneClockStr;
+      return clockStringToSec(sceneClockStr);
+    }
+    if (lastSceneClockStr) return clockStringToSec(lastSceneClockStr);
+    return getTokyoClockSec();
+  }
+
+  function update(time, nightFactor, cameraPos, sceneClockStr) {
     if (railMode === 'off') return;
+
+    const replayClockSec = timetableReplay ? resolveTimetableClockSec(sceneClockStr) : null;
 
     // Dynamically adjust train interior window glow & headlight brightness by time of day
     const nightClamped = Math.max(0, Math.min(1.2, nightFactor));
@@ -1151,6 +1193,24 @@ export function createSapporoRailNetwork(scene, mapGround) {
       const isTram = spec.group === 'tram';
       const carPitch = spec.carLength + spec.carGap;
 
+      // Official timetable replay for supported lines (namboku + tram); others keep demo motion
+      const useTimetable = timetableReplay && lineHasTimetable(spec.id) && replayClockSec != null;
+      let timetableSlots = null;
+      if (useTimetable) {
+        const vehicles = getTimetableVehicles(entry, replayClockSec);
+        const byDir = { 1: [], [-1]: [] };
+        for (const v of vehicles) byDir[v.dir]?.push(v);
+        // Cap to available mesh slots per direction (keeps InstancedMesh pool stable)
+        timetableSlots = new Map();
+        for (const dir of [1, -1]) {
+          const pool = trains.filter(tr => tr.dir === dir);
+          const list = byDir[dir] || [];
+          for (let i = 0; i < pool.length; i++) {
+            timetableSlots.set(pool[i], i < list.length ? list[i] : null);
+          }
+        }
+      }
+
       for (const tr of trains) {
         if (!visible) {
           for (let c = 0; c < tr.carSlots.length; c++) {
@@ -1173,11 +1233,41 @@ export function createSapporoRailNetwork(scene, mapGround) {
           continue;
         }
 
-        // Compute lead-car distance along the track using realistic station-dwell schedule
-        const cycleT = ((time + tr.phase * schedule.oneWayDuration) % schedule.oneWayDuration + schedule.oneWayDuration) % schedule.oneWayDuration;
-        let leadS = schedule.sampleDistanceAt(cycleT);
-        if (tr.dir === -1) {
-          leadS = totalLength - leadS;
+        let leadS;
+        let trainDir = tr.dir;
+
+        if (useTimetable) {
+          const slot = timetableSlots?.get(tr);
+          if (!slot) {
+            // No scheduled trip for this mesh — hide until next departure window
+            for (let c = 0; c < tr.carSlots.length; c++) {
+              const cs = tr.carSlots[c];
+              cs.im?.setMatrixAt(cs.imIdx, _hideMat);
+              for (let b = 0; b < cs.bogieCount; b++) bogieIM.setMatrixAt(cs.bogieStart + b, _hideMat);
+              for (let h = 0; h < cs.hvacCount; h++) hvacIM.setMatrixAt(cs.hvacStart + h, _hideMat);
+              if (cs.pantoIdx >= 0) pantoIM.setMatrixAt(cs.pantoIdx, _hideMat);
+              if (cs.couplerIdx >= 0) couplerIM.setMatrixAt(cs.couplerIdx, _hideMat);
+              if (isSubway) xrayCarIM.setMatrixAt(tr.xrayCarStart + c, _hideMat);
+            }
+            cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+            cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
+            destIM.setMatrixAt(tr.solidTrainIdx, _hideMat);
+            headIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+            headIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
+            tailIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+            tailIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
+            if (isSubway) xrayHeadIM.setMatrixAt(tr.xrayTrainIdx, _hideMat);
+            continue;
+          }
+          leadS = slot.leadS;
+          trainDir = slot.dir;
+        } else {
+          // Demo motion: station-dwell schedule loop (not official timetable)
+          const cycleT = ((time + tr.phase * schedule.oneWayDuration) % schedule.oneWayDuration + schedule.oneWayDuration) % schedule.oneWayDuration;
+          leadS = schedule.sampleDistanceAt(cycleT);
+          if (tr.dir === -1) {
+            leadS = totalLength - leadS;
+          }
         }
 
         // For open lines, keep entire train comfortably inside termini; for closed loops, wrap seamlessly!
@@ -1186,7 +1276,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
         } else {
           const trainTotalLen = spec.carsPerTrain * carPitch;
           const margin = trainTotalLen * 0.55;
-          if (tr.dir === 1) {
+          if (trainDir === 1) {
             leadS = Math.max(margin, Math.min(totalLength - 8, leadS));
           } else {
             leadS = Math.max(8, Math.min(totalLength - margin, leadS));
@@ -1194,15 +1284,15 @@ export function createSapporoRailNetwork(scene, mapGround) {
         }
 
         // Lateral double-track offset (+trackGaugeHalf on left-hand Japanese rail traffic!)
-        const lateralSign = tr.dir === 1 ? -1 : 1;
+        const lateralSign = trainDir === 1 ? -1 : 1;
 
         for (let c = 0; c < tr.carSlots.length; c++) {
           const slot = tr.carSlots[c];
-          const carCenterS = leadS - tr.dir * (c * carPitch + spec.carLength * 0.5);
+          const carCenterS = leadS - trainDir * (c * carPitch + spec.carLength * 0.5);
           samplePointAtDistance(entry, carCenterS, _pos, _tan);
 
           // Forward direction of train travel (+X in car local space)
-          _fwd.copy(_tan).multiplyScalar(tr.dir).normalize();
+          _fwd.copy(_tan).multiplyScalar(trainDir).normalize();
           _right.crossVectors(_tan, UP).normalize();
           _pos.addScaledVector(_right, lateralSign * spec.trackGaugeHalf);
 
@@ -1445,6 +1535,16 @@ export function createSapporoRailNetwork(scene, mapGround) {
     getMode: () => railMode,
     setLineEnabled,
     getLineEnabled: () => ({ ...lineEnabled }),
+    setTimetableReplay,
+    getTimetableReplay: () => timetableReplay,
+    setTimetableClockSec,
+    getTimetableClockSec: () => (
+      timetableReplay ? resolveTimetableClockSec(lastSceneClockStr) : null
+    ),
+    getTimetableCredit,
+    formatTimetableClock: () => formatClockSec(
+      timetableReplay ? resolveTimetableClockSec(lastSceneClockStr) : getTokyoClockSec()
+    ),
     pickStation,
     getStationInfo,
     getStationCameraView,

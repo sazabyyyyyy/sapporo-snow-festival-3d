@@ -554,6 +554,16 @@
               <span class="inline-block w-2 h-2 rounded-full bg-[#84cc16] shrink-0"></span>札幌市電（環状線 24電停）
             </button>
           </div>
+          <div class="pt-1 border-t border-white/10 flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-[9px] text-slate-400">時刻表リプレイ</span>
+              <button id="btn-rail-timetable" class="ctrl-btn chip text-[10px]">OFF</button>
+            </div>
+            <div id="rail-timetable-clock" class="text-[9px] text-slate-300 tabular-nums">—</div>
+            <div class="text-[8px] text-slate-500 leading-snug" id="rail-timetable-credit">
+              南北線・市電（平日）· CKAN st_time 現行時刻表
+            </div>
+          </div>
           <div class="pt-1 border-t border-white/10">
             <div class="flex items-center justify-between mb-1">
               <div class="text-[9px] text-slate-400">駅一覧</div>
@@ -584,8 +594,9 @@
         </div>
       </div>
 
-      <div class="pointer-events-none absolute bottom-12 right-2 z-20 text-[9px] text-white/55 px-1.5 py-0.5 rounded glass">
-        出典: PLATEAU / 国土地理院 / 札幌市オープンデータ（公園緑地）
+      <div class="pointer-events-none absolute bottom-12 right-2 z-20 text-[9px] text-white/55 px-1.5 py-0.5 rounded glass max-w-[70vw] text-right leading-snug">
+        出典: PLATEAU / 国土地理院 / 札幌市オープンデータ（公園緑地）<br>
+        鉄道時刻: 札幌市 CKAN st_time（取得 2026-11-28）
       </div>
 
       <div id="cut-fade" class="pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity duration-200 z-10"></div>

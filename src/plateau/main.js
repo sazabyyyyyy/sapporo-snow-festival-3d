@@ -53,6 +53,9 @@ const btnRail = document.getElementById('btn-rail');
 const btnRailPanel = document.getElementById('btn-rail-panel');
 const railPanel = document.getElementById('rail-panel');
 const btnRailXray = document.getElementById('btn-rail-xray');
+const btnRailTimetable = document.getElementById('btn-rail-timetable');
+const railTimetableClock = document.getElementById('rail-timetable-clock');
+const railTimetableCredit = document.getElementById('rail-timetable-credit');
 const railLineButtons = Array.from(document.querySelectorAll('#rail-line-toggles button[data-rail-line]'));
 const railViewButtons = Array.from(document.querySelectorAll('#rail-view-btns button[data-rail-view]'));
 const stationFilterButtons = Array.from(document.querySelectorAll('#station-filter-bar button[data-station-filter]'));
@@ -911,6 +914,42 @@ btnRailXray.addEventListener('click', ev => {
   applyRailMode(next);
 });
 
+function refreshTimetableUI() {
+  const on = railNetwork.getTimetableReplay();
+  if (btnRailTimetable) {
+    btnRailTimetable.textContent = on ? 'ON' : 'OFF';
+    btnRailTimetable.className = 'ctrl-btn chip text-[10px]' + (on ? ' on' : '');
+  }
+  const credit = railNetwork.getTimetableCredit?.();
+  if (railTimetableCredit && credit) {
+    railTimetableCredit.textContent =
+      `南北線+市電 平日 · st_time · 取得 ${credit.retrieved}`;
+  }
+  if (railTimetableClock) {
+    if (on) {
+      const clock = railNetwork.formatTimetableClock?.() || TIME_PRESETS[timeIdx]?.clock || '—';
+      railTimetableClock.textContent = `運行時刻 ${clock}（シーン時刻に連動）`;
+    } else {
+      railTimetableClock.textContent = 'デモ走行（時刻表オフ）';
+    }
+  }
+}
+
+btnRailTimetable?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  const next = !railNetwork.getTimetableReplay();
+  railNetwork.setTimetableReplay(next);
+  railNetwork.setTimetableClockSec(null);
+  if (next && railNetwork.getMode() === 'off') applyRailMode('on');
+  if (next) {
+    railNetwork.setLineEnabled('namboku', true);
+    railNetwork.setLineEnabled('tram', true);
+  }
+  refreshTimetableUI();
+});
+
+refreshTimetableUI();
+
 let railPanelVisible = false;
 function setRailPanelOpen(open) {
   railPanelVisible = Boolean(open);
@@ -1354,6 +1393,7 @@ timeButtons.forEach((btn, idx) => {
       lastLiveClockKey = '';
     }
     applyAtmosphere(TIME_PRESETS[timeIdx]);
+    refreshTimetableUI();
   });
 });
 
@@ -1857,7 +1897,12 @@ function animate(ts) {
   }
 
   festivalOverlay.update(clockTime, env.night, env.clock, projEnabled);
-  railNetwork.update(clockTime, env.night, camera.position);
+  railNetwork.update(clockTime, env.night, camera.position, env.clock);
+  if (railNetwork.getTimetableReplay() && railTimetableClock && (Math.floor(clockTime * 2) % 2 === 0)) {
+    // Lightweight UI refresh ~1Hz while timetable replay is on
+    const label = railNetwork.formatTimetableClock?.();
+    if (label) railTimetableClock.textContent = `運行時刻 ${label}（シーン時刻に連動）`;
+  }
   moiwaRopeway.update(clockTime, env.night);
   visitorLayer.update(camera.position);
   updatePrecipitation(dt, clockTime, camera.position, snowAmount, activeWeather, activeSeason);
