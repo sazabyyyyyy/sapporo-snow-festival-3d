@@ -465,4 +465,14 @@ export const RAIL_VIEWPOINTS = [
     275, 115, 220,
     false
   ),
+  makeRailView(
+    'moiwa-ropeway',
+    '藻岩山ロープウェー',
+    'MT. MOIWA ROPEWAY · AERIAL TRAM',
+    '山麓駅から中腹駅へ向かうロープウェーと、山頂駅へ続くミニケーブルカー',
+    // Mid span: stand east of the cable so the NE→SW ascent (山麓→中腹) reads in profile
+    43.0268, 141.3292, 300,
+    180, 70, -40,
+    false
+  ),
 ];

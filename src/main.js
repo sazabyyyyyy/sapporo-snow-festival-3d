@@ -411,6 +411,20 @@ const SHOTS = [
       };
     },
   },
+  {
+    dur: 9.0,
+    title: 'MT. MOIWA ROPEWAY · AERIAL TRAM',
+    sub: '藻岩山ロープウェー — 山麓から山頂へ動くゴンドラ',
+    eval(u) {
+      const t = smoother(u);
+      // Orbit from SE of the slope so the full cable run (base→mid→summit) reads clearly
+      return {
+        eye: [lerp(-22, -8, t), lerp(12, 20, t), lerp(28, 42, t)],
+        tgt: [lerp(-60, -68, t), lerp(10, 18, t), lerp(20, 30, t)],
+        fov: lerp(40, 44, t),
+      };
+    },
+  },
 ];
 
 const TOTAL_DUR = SHOTS.reduce((s, x) => s + x.dur, 0);

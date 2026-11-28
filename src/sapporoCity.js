@@ -8,6 +8,7 @@ import {
   createSusukinoSignTexture,
 } from './textures.js';
 import { createDetailedCarFleet } from './carFleet.js';
+import { createStylizedMoiwaRopeway } from './moiwaRopeway.js';
 
 function mulberry32(seed) {
   return function () {
@@ -486,7 +487,7 @@ function buildMountains() {
   ant.position.set(-76, moiwaY + 2.8, 36);
   summitGroup.add(obs, ant);
 
-  return { mesh, summitGroup };
+  return { mesh, summitGroup, mountainHeight };
 }
 
 // ==================== MAIN EXPORT: BUILD SAPPORO CITY ====================
@@ -511,6 +512,9 @@ export function createSapporoCity(scene, snowBumpMap) {
 
   const mountains = buildMountains();
   group.add(mountains.mesh, mountains.summitGroup);
+
+  // Mt. Moiwa Ropeway — animated aerial tram + mini cable cars hugging the slope
+  const moiwaRopeway = createStylizedMoiwaRopeway(group, mountains.mountainHeight);
 
   // 2. Wet/Icy Winter Roads (Realistic specular asphalt with lane stripes!)
   const roadTex = createWinterRoadTextures();
@@ -852,6 +856,9 @@ export function createSapporoCity(scene, snowBumpMap) {
       // Glide Sapporo Streetcar along Minami 1-jo
       const tramU = ((time * 0.026) % 1 + 1) % 1;
       tram.position.x = -38 + tramU * 52;
+
+      // Animate Mt. Moiwa Ropeway cabins along the mountain cable
+      moiwaRopeway.update(time, nightFactor);
     },
   };
 }
