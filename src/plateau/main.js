@@ -28,6 +28,7 @@ import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
 import { createPlateauMoiwaRopeway } from './moiwaRopeway.js';
 import { createVisitorLayer } from './visitorLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
+import { buildLiveAtmosphere } from './realtimeAtmosphere.js';
 
 // ==================== DOM REFS ====================
 const wrap = document.getElementById('stage-wrap');
@@ -38,6 +39,8 @@ const weatherButtons = Array.from(document.querySelectorAll('#weather-bar button
 const camPadButtons = Array.from(document.querySelectorAll('#cam-pad button[data-cam-act]'));
 const camPad = document.getElementById('cam-pad');
 const btnPadToggle = document.getElementById('btn-pad-toggle');
+const btnLiveTime = document.getElementById('btn-live-time');
+const weatherModeNote = document.getElementById('weather-mode-note');
 const lblPrecip = document.getElementById('lbl-precip');
 const shotTitle = document.getElementById('shot-title');
 const shotSub = document.getElementById('shot-sub');
@@ -601,7 +604,7 @@ function applyAtmosphere(env) {
   else lblPrecip.textContent = '降水';
 
   timeButtons.forEach((b, i) => {
-    b.className = 'ctrl-btn flex-1' + (i === timeIdx ? ' on' : '');
+    b.className = 'ctrl-btn flex-1' + (!liveTimeMode && i === timeIdx ? ' on' : '');
   });
   seasonButtons.forEach(b => {
     b.className = 'ctrl-btn flex-1' + (b.dataset.season === activeSeason ? ' on' : '');
@@ -609,10 +612,25 @@ function applyAtmosphere(env) {
   weatherButtons.forEach(b => {
     b.className = 'ctrl-btn flex-1' + (b.dataset.weather === activeWeather ? ' on' : '');
   });
+
+  if (btnLiveTime) {
+    btnLiveTime.textContent = liveTimeMode
+      ? `実時刻 ON · ${env.clock}`
+      : '実時刻 OFF';
+    btnLiveTime.className = 'ctrl-btn chip w-full text-left mb-1.5' + (liveTimeMode ? ' soft-on' : '');
+  }
+  if (weatherModeNote) {
+    weatherModeNote.textContent = liveTimeMode
+      ? '実時刻: 時計・日照は Asia/Tokyo。天候は手動（サンプル）。'
+      : '天候は手動（サンプル）。実時刻は時計・日照のみ連動。';
+  }
 }
 
 // ==================== VIEW / STATE ====================
 let timeIdx = 2; // 昼
+let liveTimeMode = false;
+let liveEnv = null;
+let lastLiveClockKey = '';
 let projEnabled = false;
 let scopeOn = true;
 let snowAmount = 0.08;
@@ -623,6 +641,40 @@ let activeLocationInfo = null;
 let flyAnim = null; // Smooth camera fly-to when choosing a ward / station / preset
 
 const WARD_BY_ID = Object.fromEntries(SAPPORO_WARD_VIEWS.map(w => [w.id, w]));
+
+function getActiveEnv() {
+  return liveTimeMode && liveEnv ? liveEnv : TIME_PRESETS[timeIdx];
+}
+
+/** Sync sun / night / TV-tower clock from Asia/Tokyo (minute resolution). */
+function syncLiveAtmosphere(force = false) {
+  const { env, parts, season } = buildLiveAtmosphere(TIME_PRESETS);
+  const key = parts.clock;
+  if (!force && key === lastLiveClockKey && liveEnv) {
+    return false;
+  }
+  lastLiveClockKey = key;
+  liveEnv = env;
+  // Align calendar season only when entering live mode; weather stays manual.
+  if (force) {
+    activeSeason = season;
+    if (activeSeason === 'winter' && activeWeather === 'clear') activeWeather = 'snow';
+    else if (activeSeason !== 'winter' && activeWeather === 'snow') activeWeather = 'clear';
+  }
+  applyAtmosphere(liveEnv);
+  return true;
+}
+
+function setLiveTimeMode(on) {
+  liveTimeMode = !!on;
+  if (liveTimeMode) {
+    syncLiveAtmosphere(true);
+  } else {
+    liveEnv = null;
+    lastLiveClockKey = '';
+    applyAtmosphere(TIME_PRESETS[timeIdx]);
+  }
+}
 
 applyAtmosphere(TIME_PRESETS[timeIdx]);
 
@@ -1257,9 +1309,19 @@ btnStyle.addEventListener('click', () => {
   btnStyle.textContent = whiteModelMode ? 'ホワイト模型' : 'リアル質感';
 });
 
+btnLiveTime?.addEventListener('click', () => {
+  setLiveTimeMode(!liveTimeMode);
+});
+
 timeButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => {
     timeIdx = idx;
+    // Manual preset exits live clock/sun sync
+    if (liveTimeMode) {
+      liveTimeMode = false;
+      liveEnv = null;
+      lastLiveClockKey = '';
+    }
     applyAtmosphere(TIME_PRESETS[timeIdx]);
   });
 });
@@ -1275,7 +1337,7 @@ seasonButtons.forEach(btn => {
     } else if (activeSeason !== 'winter' && activeWeather === 'snow') {
       activeWeather = 'clear';
     }
-    applyAtmosphere(TIME_PRESETS[timeIdx]);
+    applyAtmosphere(getActiveEnv());
   });
 });
 
@@ -1284,7 +1346,7 @@ weatherButtons.forEach(btn => {
     const nextWeather = btn.dataset.weather;
     if (!nextWeather) return;
     activeWeather = nextWeather;
-    applyAtmosphere(TIME_PRESETS[timeIdx]);
+    applyAtmosphere(getActiveEnv());
   });
 });
 
@@ -1748,8 +1810,11 @@ function animate(ts) {
     locRingMat.opacity = (1 - pulse) * 0.85;
   }
 
+  // Live Asia/Tokyo clock + sun (minute resolution)
+  if (liveTimeMode) syncLiveAtmosphere(false);
+
   // Update dynamic subsystems
-  const env = TIME_PRESETS[timeIdx];
+  const env = getActiveEnv();
   skyUniforms.uTime.value = clockTime;
   skyDome.position.copy(camera.position);
   winterUniforms.uTime.value = clockTime;
