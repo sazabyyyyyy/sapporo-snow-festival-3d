@@ -1647,8 +1647,20 @@ function flyToStationMeta(meta) {
   flyToStationView(railNetwork.resolveStationCameraView(meta.name, meta));
 }
 
+const activeTouchPointers = new Set();
+
 renderer.domElement.addEventListener('pointerdown', ev => {
-  ptrGesture = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+  if (ev.pointerType === 'touch') {
+    activeTouchPointers.add(ev.pointerId);
+    if (activeTouchPointers.size > 1) {
+      // Multi-touch gesture in progress — cancel single-tap picking
+      ptrGesture = null;
+    } else {
+      ptrGesture = { x: ev.clientX, y: ev.clientY, t: performance.now(), pointerId: ev.pointerId };
+    }
+  } else {
+    ptrGesture = { x: ev.clientX, y: ev.clientY, t: performance.now(), pointerId: ev.pointerId };
+  }
   // Skip / take over the opening descent if the user grabs the camera
   if (flyAnim?.isIntro) {
     introActive = false;
@@ -1660,6 +1672,8 @@ renderer.domElement.addEventListener('pointerdown', ev => {
 });
 
 renderer.domElement.addEventListener('pointermove', ev => {
+  // Touch devices don't hover — skip expensive 3D raycasts during touch drags/pinches
+  if (ev.pointerType === 'touch') return;
   // Skip hover while dragging the camera
   if (ptrGesture) {
     const dx = ev.clientX - ptrGesture.x;
@@ -1699,9 +1713,12 @@ renderer.domElement.addEventListener('pointermove', ev => {
 });
 
 renderer.domElement.addEventListener('pointerup', ev => {
+  if (ev.pointerType === 'touch') {
+    activeTouchPointers.delete(ev.pointerId);
+  }
   const g = ptrGesture;
   ptrGesture = null;
-  if (!g) return;
+  if (!g || (g.pointerId !== undefined && g.pointerId !== ev.pointerId)) return;
   const dx = ev.clientX - g.x;
   const dy = ev.clientY - g.y;
   const dt = performance.now() - g.t;
@@ -1725,6 +1742,11 @@ renderer.domElement.addEventListener('pointerup', ev => {
     renderStationList();
     flyToStationInfo(hit);
   }
+});
+
+renderer.domElement.addEventListener('pointercancel', ev => {
+  if (ev.pointerType === 'touch') activeTouchPointers.delete(ev.pointerId);
+  ptrGesture = null;
 });
 
 renderer.domElement.addEventListener('pointerleave', () => {
@@ -1842,6 +1864,7 @@ function animate(ts) {
 
   // Camera update (always interactive free-drone; optional fly-to animation)
   if (flyAnim) {
+    controls.cancelTouchInertia?.();
     flyAnim.t = Math.min(1, flyAnim.t + dt / flyAnim.dur);
     const u = flyAnim.t;
     const e = flyAnim.ease === 'inOut'
