@@ -33,17 +33,27 @@ const KIND_META = {
     baseW: 54,
     baseH: 17,
   },
+  porocle: {
+    label: 'ポロクル',
+    short: 'ポロ',
+    colorHex: 0xf43f5e,
+    css: '#f43f5e',
+    fadeStart: 3800,
+    fadeEnd: 7200,
+    baseW: 58,
+    baseH: 17,
+  },
 };
 
 function createPinTexture(title, kind) {
   const meta = KIND_META[kind] || KIND_META.tourism;
   const c = document.createElement('canvas');
-  const wide = kind === 'toilet' || title.length >= 8;
+  const wide = kind === 'toilet' || kind === 'porocle' || title.length >= 8;
   c.width = wide ? 248 : 220;
   c.height = 64;
   const ctx = c.getContext('2d');
   const pad = 5;
-  const barW = kind === 'toilet' ? 48 : 36;
+  const barW = kind === 'toilet' || kind === 'porocle' ? 48 : 36;
 
   ctx.fillStyle = 'rgba(9, 14, 28, 0.82)';
   ctx.strokeStyle = meta.css;
@@ -86,14 +96,14 @@ function cameraViewFor(pos) {
 }
 
 /**
- * Open-data visitor POI layer (tourism / Wi-Fi / park toilets) for the PLATEAU scene.
+ * Open-data visitor POI layer (tourism / Wi-Fi / park toilets / Porocle) for the PLATEAU scene.
  */
 export function createVisitorLayer(scene) {
   const root = new THREE.Group();
   root.name = 'visitor-layer';
   scene.add(root);
 
-  const kindEnabled = { tourism: true, wifi: true, toilet: true };
+  const kindEnabled = { tourism: true, wifi: true, toilet: true, porocle: true };
   let winterOnly = false;
   let areaFilter = 'all';
   let layerVisible = false;

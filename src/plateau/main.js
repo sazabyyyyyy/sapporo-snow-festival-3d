@@ -1017,6 +1017,7 @@ const VISITOR_KIND_STYLES = {
   tourism: 'border-amber-400/50 bg-amber-500/20 text-amber-100',
   toilet: 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100',
   wifi: 'border-sky-400/50 bg-sky-500/20 text-sky-100',
+  porocle: 'border-rose-400/50 bg-rose-500/20 text-rose-100',
 };
 
 let visitorPanelVisible = false;
@@ -1097,6 +1098,10 @@ function renderVisitorDetail(item) {
     if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
     bits.push(`<div>冬季利用: ${item.winter ? '可' : '不可／不明'}</div>`);
     bits.push(`<div>多目的: ${item.accessible ? 'あり' : 'なし'} / 温水洗浄便座: ${item.washlet ? 'あり' : 'なし'}</div>`);
+  } else if (item.kind === 'porocle') {
+    if (item.portNo) bits.push(`<div>ポート番号: ${escapeHtml(item.portNo)}</div>`);
+    if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
+    bits.push('<div class="mt-1 text-slate-400">シェアサイクル ポロクル</div>');
   }
 
   visitorDetailEl.innerHTML = bits.join('');
@@ -1127,7 +1132,7 @@ function renderVisitorList() {
     dot.style.background = meta?.css || '#94a3b8';
 
     const kind = document.createElement('span');
-    kind.className = 'text-[9px] text-slate-400 w-8 shrink-0';
+    kind.className = 'text-[9px] text-slate-400 w-10 shrink-0';
     kind.textContent = meta?.label || '';
 
     const name = document.createElement('span');
@@ -1139,6 +1144,7 @@ function renderVisitorList() {
     if (item.kind === 'tourism') tag.textContent = item.area || '';
     else if (item.kind === 'toilet') tag.textContent = item.winter ? '冬◎' : '';
     else if (item.kind === 'wifi') tag.textContent = 'Wi-Fi';
+    else if (item.kind === 'porocle') tag.textContent = item.portNo ? `#${item.portNo}` : 'ポロクル';
 
     btn.append(dot, kind, name, tag);
     btn.addEventListener('click', ev => {
@@ -1176,7 +1182,9 @@ function flyToVisitor(item) {
       ? `${item.area || '都心'} — ${item.category || '観光スポット'}（札幌市オープンデータ）`
       : item.kind === 'wifi'
         ? `${item.ssid || 'Sapporo City Wi-Fi'} — 公衆無線LAN`
-        : `${item.winter ? '冬季利用可' : '冬季利用注意'} — 中央区公園トイレ`,
+        : item.kind === 'porocle'
+          ? `${item.address || '札幌市内'} — シェアサイクル ポロクル`
+          : `${item.winter ? '冬季利用可' : '冬季利用注意'} — 中央区公園トイレ`,
   };
   controls.enabled = true;
   flyAnim = {
