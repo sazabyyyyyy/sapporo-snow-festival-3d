@@ -806,6 +806,7 @@ const RAIL_LINE_STYLES = {
   tozai:   'border-amber-400/50 bg-amber-500/20 text-amber-100',
   toho:    'border-sky-400/50 bg-sky-500/20 text-sky-100',
   jr:      'border-green-400/50 bg-green-500/20 text-green-100',
+  tram:    'col-span-2 justify-center border-lime-400/50 bg-lime-500/20 text-lime-100',
 };
 
 function applyRailMode(mode) {
@@ -866,7 +867,10 @@ railLineButtons.forEach(btn => {
     if (railNetwork.getMode() === 'off' && next) {
       applyRailMode('on');
     }
-    btn.className = 'ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border text-left text-[10px] ' + (
+    const baseCls = key === 'tram'
+      ? 'ctrl-btn col-span-2 flex items-center justify-center gap-1.5 px-1.5 py-1 rounded border text-[10px] '
+      : 'ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border text-left text-[10px] ';
+    btn.className = baseCls + (
       next
         ? RAIL_LINE_STYLES[key]
         : 'border-white/10 bg-slate-900/70 text-slate-500 opacity-60'
@@ -905,6 +909,7 @@ const STATION_FILTER_STYLES = {
   tozai: 'soft-on',
   toho: 'soft-on',
   jr: 'soft-on',
+  tram: 'soft-on',
 };
 
 let stationFilter = 'all';
@@ -939,7 +944,7 @@ function renderStationList() {
 
     const code = document.createElement('span');
     code.className = 'font-mono text-[9px] text-slate-400 w-7 shrink-0';
-    code.textContent = st.code || (st.isSubway ? '—' : 'JR');
+    code.textContent = st.code || (st.isSubway ? '—' : (st.isTram ? 'SC' : 'JR'));
 
     const name = document.createElement('span');
     name.className = 'flex-1 truncate text-[10px] font-medium';

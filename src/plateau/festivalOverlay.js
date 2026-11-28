@@ -519,37 +519,11 @@ export function createPlateauFestivalOverlay(scene, snowBumpMap, projectionTex) 
   }
   const carFleet = createDetailedCarFleet(gridGroup, cars, 1.0);
 
-  // Real-scale Sapporo Polaris Low-Floor Streetcar (~17m long) gliding along Minami 1-jo (gridZ = 190m)
-  const tram = new THREE.Group();
-  const tramShell = new THREE.Mesh(
-    new THREE.BoxGeometry(16.5, 3.2, 2.4),
-    new THREE.MeshStandardMaterial({ color: 0x1c4534, metalness: 0.5, roughness: 0.28 })
-  );
-  tramShell.position.y = 1.9;
-  const tramWin = new THREE.Mesh(
-    new THREE.BoxGeometry(14.2, 1.35, 2.48),
-    new THREE.MeshStandardMaterial({ color: 0xffe6a8, emissive: 0xffc055, emissiveIntensity: 2.9 })
-  );
-  tramWin.position.y = 2.25;
-  const tramRoof = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.4, 2.2), snowMat);
-  tramRoof.position.y = 3.65;
-  const tramHead = new THREE.Mesh(
-    new THREE.BoxGeometry(0.4, 0.7, 1.6),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2c2, emissiveIntensity: 4.5 })
-  );
-  tramHead.position.set(8.3, 1.25, 0);
-  const tramLight = new THREE.PointLight(0xffe099, 160, 48, 1.7);
-  tramLight.position.set(10.5, 2.2, 0);
-  tram.add(tramShell, tramWin, tramRoof, tramHead, tramLight);
-  tram.position.set(-328, 0.05, 190);
-  gridGroup.add(tram);
-
   let lastClockStr = '';
 
   function setSeason(season) {
     const isWinter = season === 'winter';
     winterOnlyGroup.visible = isWinter;
-    tramRoof.visible = isWinter;
 
     if (season === 'winter') {
       canopyBaseMat.color.setHex(0x1c382c);
@@ -596,10 +570,6 @@ export function createPlateauFestivalOverlay(scene, snowBumpMap, projectionTex) 
 
       // Animate real-scale detailed 3D cars (body, tinted cabin, 4 wheels, twin headlights & taillights)
       carFleet.update(time, nightFactor);
-
-      // Glide Sapporo Streetcar along Minami 1-jo
-      const tramU = ((time * 0.018) % 1 + 1) % 1;
-      tram.position.x = -760 + tramU * 820;
     },
   };
 }

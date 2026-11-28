@@ -279,6 +279,69 @@ export const RAIL_LINES = [
       { code: 'G11', name: 'あいの里公園',   major: true,  lat: 43.161220, lon: 141.413273, initGroundY: -16, relY: 1.2 },
     ],
   },
+
+  // ==================== 7. SAPPORO STREETCAR: LOOP LINE (札幌市電 環状線 — ALL 24 STOPS) ====================
+  {
+    id: 'tram',
+    group: 'tram',
+    closed: true,
+    name: '札幌市電（環状線）',
+    shortName: '市電',
+    enName: 'Sapporo Streetcar Loop',
+    series: 'A1200形ポラリス・3300形',
+    colorHex: 0x84cc16,
+    glowHex: 0xa3e635,
+    bodyHex: 0x1e4d38,
+    stripeHex: 0x84cc16,
+    roofHex: 0xd8e4dc,
+    carsPerTrain: 3,   // 3-section low-floor articulated streetcar (Polaris A1200 ~17m total!)
+    carLength: 5.5,
+    carWidth: 2.32,
+    carHeight: 3.15,
+    carGap: 0.32,
+    trackGaugeHalf: 1.65,
+    lateralShift: 0,
+    trainCountPerDir: 5, // 5 inner-loop (内回り) + 5 outer-loop (外回り) = 10 streetcars!
+    speedMps: 22,
+    dwellSec: 1.6,
+    shelterElevated: false,
+    points: [
+      // Minami 1-jo Street (Westbound: Nishi 4 -> Nishi 15)
+      { code: 'SC01', name: '西4丁目',          major: true,  lat: 43.058894, lon: 141.351937, initGroundY:  0, relY: 0.16 },
+      { code: 'SC02', name: '西8丁目',          major: false, lat: 43.058134, lon: 141.346208, initGroundY:  2, relY: 0.16 },
+      { code: 'SC03', name: '中央区役所前',      major: false, lat: 43.057490, lon: 141.340914, initGroundY:  4, relY: 0.16 },
+      { code: 'SC04', name: '西15丁目',         major: true,  lat: 43.056680, lon: 141.334450, initGroundY:  6, relY: 0.16 },
+      { lat: 43.056420, lon: 141.334180, initGroundY: 6, relY: 0.16 }, // Corner: Minami 1-jo -> Nishi 15-chome south
+      // Nishi 15-chome / Fukuzumi-Soka (Southbound)
+      { code: 'SC05', name: '西線6条',          major: false, lat: 43.051280, lon: 141.335031, initGroundY:  9, relY: 0.16 },
+      { code: 'SC06', name: '西線9条旭山公園通', major: false, lat: 43.047942, lon: 141.335457, initGroundY: 11, relY: 0.16 },
+      { code: 'SC07', name: '西線11条',         major: false, lat: 43.044319, lon: 141.335914, initGroundY: 14, relY: 0.16 },
+      { code: 'SC08', name: '西線14条',         major: false, lat: 43.040290, lon: 141.336436, initGroundY: 17, relY: 0.16 },
+      { code: 'SC09', name: '西線16条',         major: false, lat: 43.036611, lon: 141.336894, initGroundY: 20, relY: 0.16 },
+      { code: 'SC10', name: 'ロープウェイ入口',  major: true,  lat: 43.033581, lon: 141.337293, initGroundY: 22, relY: 0.16 },
+      { code: 'SC11', name: '電車事業所前',      major: false, lat: 43.030592, lon: 141.337667, initGroundY: 24, relY: 0.16 },
+      { lat: 43.029950, lon: 141.338150, initGroundY: 24, relY: 0.16 }, // Corner: Nishi 14-chome -> Minami 22-jo east
+      // Minami 22-jo Street (Eastbound)
+      { code: 'SC12', name: '中央図書館前',      major: true,  lat: 43.030533, lon: 141.341412, initGroundY: 22, relY: 0.16 },
+      { code: 'SC13', name: '石山通',           major: false, lat: 43.030722, lon: 141.344222, initGroundY: 20, relY: 0.16 },
+      { code: 'SC14', name: '東屯田通',         major: false, lat: 43.031000, lon: 141.348610, initGroundY: 17, relY: 0.16 },
+      { lat: 43.031420, lon: 141.351980, initGroundY: 15, relY: 0.16 }, // Corner: Minami 22-jo -> Nishi 7-chome north
+      // Nishi 7-chome Street (Northbound)
+      { code: 'SC15', name: '幌南小学校前',      major: false, lat: 43.032306, lon: 141.351917, initGroundY: 14, relY: 0.16 },
+      { code: 'SC16', name: '山鼻19条',         major: false, lat: 43.035083, lon: 141.351556, initGroundY: 12, relY: 0.16 },
+      { code: 'SC17', name: '静修学園前',        major: false, lat: 43.038389, lon: 141.351167, initGroundY: 10, relY: 0.16 },
+      { code: 'SC18', name: '行啓通',           major: true,  lat: 43.041611, lon: 141.350750, initGroundY:  8, relY: 0.16 },
+      { code: 'SC19', name: '中島公園通',        major: false, lat: 43.045750, lon: 141.350194, initGroundY:  5, relY: 0.16 },
+      { code: 'SC20', name: '山鼻9条',          major: false, lat: 43.048944, lon: 141.349778, initGroundY:  4, relY: 0.16 },
+      { code: 'SC21', name: '東本願寺前',        major: false, lat: 43.051694, lon: 141.349528, initGroundY:  3, relY: 0.16 },
+      { code: 'SC22', name: '資生館小学校前',    major: false, lat: 43.055056, lon: 141.349111, initGroundY:  2, relY: 0.16 },
+      { lat: 43.055320, lon: 141.349420, initGroundY: 2, relY: 0.16 }, // Corner: Nishi 7-chome -> Minami 4-jo east
+      // Minami 4-jo (Susukino) & Ekimae-dori (Northbound back to Nishi 4)
+      { code: 'SC23', name: 'すすきの',         major: false, lat: 43.055694, lon: 141.353278, initGroundY:  1, relY: 0.16 },
+      { code: 'SC24', name: '狸小路',           major: true,  lat: 43.057278, lon: 141.352917, initGroundY:  1, relY: 0.16 },
+      { lat: 43.058940, lon: 141.352540, initGroundY: 0, relY: 0.16 }, // Corner: Ekimae-dori -> Minami 1-jo west (4-chome)
+    ],
+  },
 ];
 
 /**
@@ -294,6 +357,7 @@ export function buildStationCatalog() {
     tozai: [],
     toho: [],
     jr: [],
+    tram: [],
   };
   const seenAll = new Set();
   const seenJr = new Set();
@@ -316,6 +380,7 @@ export function buildStationCatalog() {
         initGroundY: pt.initGroundY ?? 0,
         major: Boolean(pt.major),
         isSubway: line.group === 'subway',
+        isTram: line.group === 'tram',
       };
 
       if (filterKey === 'jr') {
@@ -380,6 +445,24 @@ export const RAIL_VIEWPOINTS = [
     '厚別区・新札幌の高架JR千歳線（快速エアポート）と地下の東西線終点',
     43.03879, 141.47247, 22,
     -260, 130, 230,
+    false
+  ),
+  makeRailView(
+    'tram-odori',
+    '市電・西4〜すすきの',
+    'SAPPORO STREETCAR · NISHI 4 — TANUKIKOJI — SUSUKINO',
+    '札幌市電 環状線（西4丁目・狸小路・すすきの）サイドリザベーション区間',
+    43.05730, 141.35210, 8,
+    185, 88, 175,
+    false
+  ),
+  makeRailView(
+    'tram-moiwa',
+    '市電・ロープウェイ入口',
+    'SAPPORO STREETCAR · MT. MOIWA ROPEWAY LOOP',
+    '藻岩山麓を巡る札幌市電 環状線（ロープウェイ入口・電車事業所前・中央図書館前）',
+    43.03220, 141.33950, 26,
+    275, 115, 220,
     false
   ),
 ];

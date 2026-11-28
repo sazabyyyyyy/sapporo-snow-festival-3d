@@ -1,6 +1,15 @@
 import * as THREE from 'three';
 import { latLonToGround } from './geo.js';
 import { RAIL_LINES } from './railData.js';
+import {
+  TRAIN_LIVERIES,
+  createSculptedCarGeometry,
+  createPantographGeometry,
+  createBogieGeometry,
+  createHvacGeometry,
+  createTrainLiveryTextures,
+  resolveTrainLiveryKey,
+} from './trainModels.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -9,17 +18,25 @@ const UP = new THREE.Vector3(0, 1, 0);
  * `compact` shrinks chrome for non-hub stops so all stations can stay readable together.
  */
 function createStationBadgeTexture(title, sub, accentHex, isJR, compact = false) {
+  const badgeLabel = isJR ? 'JR' : (sub || '').slice(0, 4);
+  const wideCode = badgeLabel.length >= 4;
   const c = document.createElement('canvas');
-  c.width = compact ? 220 : 256;
+  c.width = compact ? (wideCode ? 238 : 220) : (wideCode ? 276 : 256);
   c.height = compact ? 64 : 76;
   const ctx = c.getContext('2d');
 
   const hexStr = '#' + accentHex.toString(16).padStart(6, '0');
   const pad = compact ? 5 : 6;
-  const barW = compact ? 34 : 42;
-  const nameX = compact ? 52 : 66;
+  const barW = compact ? (wideCode ? 46 : 34) : (wideCode ? 56 : 42);
+  const nameX = pad + 6 + barW + (compact ? 8 : 10);
   const midY = c.height * 0.5;
-  const nameSize = title.length >= 8 ? (compact ? 15 : 17) : title.length >= 6 ? (compact ? 17 : 20) : (compact ? 19 : 24);
+  const nameSize = title.length >= 9
+    ? (compact ? 14 : 16)
+    : title.length >= 8
+      ? (compact ? 15 : 17)
+      : title.length >= 6
+        ? (compact ? 17 : 20)
+        : (compact ? 19 : 24);
 
   // Rounded dark translucent pill
   ctx.fillStyle = compact ? 'rgba(9, 14, 28, 0.78)' : 'rgba(9, 14, 28, 0.84)';
@@ -37,10 +54,10 @@ function createStationBadgeTexture(title, sub, accentHex, isJR, compact = false)
   ctx.fill();
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${compact ? 14 : 20}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
+  const codeFontSize = wideCode ? (compact ? 12 : 16) : (compact ? 14 : 20);
+  ctx.font = `bold ${codeFontSize}px -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const badgeLabel = isJR ? 'JR' : (sub || '').slice(0, 3);
   ctx.fillText(badgeLabel, pad + 6 + barW * 0.5, midY);
 
   // Station name
@@ -142,7 +159,7 @@ function buildRibbonGeometry(samples, halfWidth, yOffset = 0, closedBoxHeight = 
  * Evaluates a smooth motion schedule along a line with realistic deceleration, brief station stops,
  * and acceleration between stations, turning around smoothly at both termini.
  */
-function buildStationSchedule(curve, stationArcLengths, totalLength, speedMps, dwellSec) {
+function buildStationSchedule(curve, stationArcLengths, totalLength, speedMps, dwellSec, closed = false) {
   // Precompute cumulative travel time at every station along one full outbound run (0 -> totalLength)
   const stops = stationArcLengths.slice().sort((a, b) => a - b);
   const segs = [];
@@ -166,10 +183,20 @@ function buildStationSchedule(curve, stationArcLengths, totalLength, speedMps, d
     }
   }
 
+  // For closed loops (e.g. Sapporo Streetcar), smoothly close the final segment back to stop[0]!
+  if (closed && stops.length >= 2) {
+    const lastS = stops[stops.length - 1];
+    const wrapEndS = totalLength + stops[0];
+    const wrapDist = Math.max(10, wrapEndS - lastS);
+    const runDur = wrapDist / speedMps + 1.4;
+    segs.push({ type: 'run', t0: tCursor, t1: tCursor + runDur, s0: lastS, s1: wrapEndS });
+    tCursor += runDur;
+  }
+
   const oneWayDuration = Math.max(10, tCursor);
 
   function sampleDistanceAt(tMod) {
-    // Binary/linear search over ~15 segments (tiny array, ultra-fast)
+    // Binary/linear search over ~15-25 segments (tiny array, ultra-fast)
     for (let i = 0; i < segs.length; i++) {
       const sg = segs[i];
       if (tMod <= sg.t1 || i === segs.length - 1) {
@@ -207,6 +234,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
     tozai: true,
     toho: true,
     jr: true,
+    tram: true,
   };
 
   let railMode = 'on'; // 'on' | 'xray' | 'off'
@@ -218,38 +246,69 @@ export function createSapporoRailNetwork(scene, mapGround) {
   const _pickRaycaster = new THREE.Raycaster();
   _pickRaycaster.params.Sprite = { threshold: 0.1 };
 
-  // Shared train car unit geometries (car faces +X, up = +Y, width = Z)
-  // Unit-sized 1x1x1 boxes scaled per line/car so ALL trains share minimal draw calls!
+  // ==================== SCULPTED 3D ROLLING STOCK GEOMETRIES & PBR LIVERIES ====================
   const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const midCarGeo = createSculptedCarGeometry({ isLead: false });
+  const leadGeos = {
+    commuter: createSculptedCarGeometry({ isLead: true, noseStyle: 'commuter' }),
+    express:  createSculptedCarGeometry({ isLead: true, noseStyle: 'express' }),
+    tram:     createSculptedCarGeometry({ isLead: true, noseStyle: 'tram' }),
+  };
+  const bogieGeo = createBogieGeometry();
+  const hvacGeo = createHvacGeometry();
+  const pantoGeo = createPantographGeometry();
+  const headlightGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.12, 10);
+  headlightGeo.rotateZ(Math.PI / 2);
 
-  const solidBodyMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    metalness: 0.58,
+  // Build one PBR livery material (diffuse + emissive lit windows + glossy glass roughness) per train series
+  const liveryMaterials = {};
+  for (const [key, style] of Object.entries(TRAIN_LIVERIES)) {
+    liveryMaterials[key] = createTrainLiveryTextures(style);
+  }
+
+  const bogieMat = new THREE.MeshStandardMaterial({
+    color: 0x1e242d,
+    metalness: 0.65,
+    roughness: 0.55,
+  });
+  const hvacMat = new THREE.MeshStandardMaterial({
+    color: 0xc2ccd8,
+    metalness: 0.42,
+    roughness: 0.52,
+  });
+  const pantoMat = new THREE.MeshStandardMaterial({
+    color: 0x3b4452,
+    metalness: 0.82,
     roughness: 0.28,
   });
-  const solidStripeMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.45,
-    metalness: 0.35,
-    roughness: 0.35,
+  const couplerMat = new THREE.MeshStandardMaterial({
+    color: 0x191e26,
+    metalness: 0.18,
+    roughness: 0.88,
   });
-  const solidWindowMat = new THREE.MeshStandardMaterial({
-    color: 0xffe9b0,
-    emissive: 0xffc663,
-    emissiveIntensity: 2.3,
-    roughness: 0.14,
+  const cabGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x091322,
+    emissive: 0x162438,
+    emissiveIntensity: 0.35,
     metalness: 0.25,
+    roughness: 0.06,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+  });
+  const destLedMat = new THREE.MeshStandardMaterial({
+    color: 0xfff0c2,
+    emissive: 0xffb838,
+    emissiveIntensity: 2.8,
   });
   const solidHeadMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xf4fbff,
-    emissiveIntensity: 4.8,
+    emissiveIntensity: 5.2,
   });
   const solidTailMat = new THREE.MeshStandardMaterial({
     color: 0xff2b20,
     emissive: 0xff1e16,
-    emissiveIntensity: 4.2,
+    emissiveIntensity: 4.4,
   });
 
   // Underground X-Ray ghost car materials (drawn ONLY when occluded behind ground/buildings via GreaterDepth!)
@@ -295,35 +354,90 @@ export function createSapporoRailNetwork(scene, mapGround) {
   });
   const pierGeo = new THREE.BoxGeometry(2.2, 1.0, 6.2);
 
-  // Count total train cars & heads across all lines for InstancedMesh allocation
-  let totalSolidCars = 0;
+  // Pre-count exact instance capacities per livery bucket & shared rolling stock detail pools
+  const leadCounts = {};
+  const midCounts = {};
   let totalSolidTrains = 0;
+  let totalBogies = 0;
+  let totalHvacs = 0;
+  let totalPantos = 0;
+  let totalCouplers = 0;
   let totalXrayCars = 0;
   let totalXrayTrains = 0;
 
+  function hasPantograph(spec, carIdx) {
+    // Real Sapporo accuracy: Namboku Line uses third-rail power (no overhead pantographs)!
+    if (spec.id === 'namboku') return false;
+    if (spec.group === 'tram') return carIdx === 1;
+    if (spec.carsPerTrain >= 6) return carIdx === 1 || carIdx === spec.carsPerTrain - 2;
+    return carIdx === 1;
+  }
+
   for (const spec of RAIL_LINES) {
-    const trains = spec.trainCountPerDir * 2;
-    totalSolidTrains += trains;
-    totalSolidCars += trains * spec.carsPerTrain;
-    if (spec.group === 'subway') {
-      totalXrayTrains += trains;
-      totalXrayCars += trains * spec.carsPerTrain;
+    for (const dir of [1, -1]) {
+      for (let k = 0; k < spec.trainCountPerDir; k++) {
+        const lKey = resolveTrainLiveryKey(spec, k, dir);
+        totalSolidTrains += 1;
+        leadCounts[lKey] = (leadCounts[lKey] || 0) + Math.min(2, spec.carsPerTrain);
+        midCounts[lKey] = (midCounts[lKey] || 0) + Math.max(0, spec.carsPerTrain - 2);
+        totalCouplers += Math.max(0, spec.carsPerTrain - 1);
+        for (let c = 0; c < spec.carsPerTrain; c++) {
+          totalBogies += spec.group === 'tram' ? 1 : 2;
+          totalHvacs += spec.group === 'tram' ? 1 : 2;
+          if (hasPantograph(spec, c)) totalPantos += 1;
+        }
+        if (spec.group === 'subway') {
+          totalXrayTrains += 1;
+          totalXrayCars += spec.carsPerTrain;
+        }
+      }
     }
   }
 
-  const bodyIM = new THREE.InstancedMesh(unitBoxGeo, solidBodyMat, totalSolidCars);
-  const stripeIM = new THREE.InstancedMesh(unitBoxGeo, solidStripeMat, totalSolidCars);
-  const windowIM = new THREE.InstancedMesh(unitBoxGeo, solidWindowMat, totalSolidCars);
-  const headIM = new THREE.InstancedMesh(unitBoxGeo, solidHeadMat, totalSolidTrains);
-  const tailIM = new THREE.InstancedMesh(unitBoxGeo, solidTailMat, totalSolidTrains);
+  // Allocate per-livery sculpted InstancedMesh pools (lead/tail aerodynamic cabs + mid coaches)
+  const carPools = {};
+  for (const lKey of Object.keys(TRAIN_LIVERIES)) {
+    const style = TRAIN_LIVERIES[lKey];
+    const noseStyle = style.isExpress ? 'express' : (style.isTram ? 'tram' : 'commuter');
+    const mat = liveryMaterials[lKey];
+    const leadCount = leadCounts[lKey] || 0;
+    const midCount = midCounts[lKey] || 0;
 
-  bodyIM.castShadow = true;
-  bodyIM.receiveShadow = true;
-  bodyIM.frustumCulled = false;
-  stripeIM.frustumCulled = false;
-  windowIM.frustumCulled = false;
-  headIM.frustumCulled = false;
-  tailIM.frustumCulled = false;
+    let leadIM = null;
+    if (leadCount > 0) {
+      leadIM = new THREE.InstancedMesh(leadGeos[noseStyle], mat, leadCount);
+      leadIM.castShadow = true;
+      leadIM.receiveShadow = true;
+      leadIM.frustumCulled = false;
+      rootGroup.add(leadIM);
+    }
+    let midIM = null;
+    if (midCount > 0) {
+      midIM = new THREE.InstancedMesh(midCarGeo, mat, midCount);
+      midIM.castShadow = true;
+      midIM.receiveShadow = true;
+      midIM.frustumCulled = false;
+      rootGroup.add(midIM);
+    }
+    carPools[lKey] = { leadIM, midIM, leadCursor: 0, midCursor: 0, noseStyle };
+  }
+
+  // Allocate shared detail InstancedMesh pools (bogies, HVAC, pantographs, gangways, cab glass, twin lights)
+  const bogieIM = new THREE.InstancedMesh(bogieGeo, bogieMat, Math.max(1, totalBogies));
+  const hvacIM = new THREE.InstancedMesh(hvacGeo, hvacMat, Math.max(1, totalHvacs));
+  const pantoIM = new THREE.InstancedMesh(pantoGeo, pantoMat, Math.max(1, totalPantos));
+  const couplerIM = new THREE.InstancedMesh(unitBoxGeo, couplerMat, Math.max(1, totalCouplers));
+  const cabGlassIM = new THREE.InstancedMesh(unitBoxGeo, cabGlassMat, Math.max(1, totalSolidTrains * 2));
+  const destIM = new THREE.InstancedMesh(unitBoxGeo, destLedMat, Math.max(1, totalSolidTrains));
+  const headIM = new THREE.InstancedMesh(headlightGeo, solidHeadMat, Math.max(1, totalSolidTrains * 2));
+  const tailIM = new THREE.InstancedMesh(headlightGeo, solidTailMat, Math.max(1, totalSolidTrains * 2));
+
+  for (const im of [bogieIM, hvacIM, pantoIM, couplerIM, cabGlassIM, destIM, headIM, tailIM]) {
+    im.frustumCulled = false;
+    rootGroup.add(im);
+  }
+  bogieIM.castShadow = false;
+  hvacIM.castShadow = true;
 
   const xrayCarIM = new THREE.InstancedMesh(unitBoxGeo, xrayCarMat, totalXrayCars);
   const xrayHeadIM = new THREE.InstancedMesh(unitBoxGeo, xrayHeadMat, totalXrayTrains);
@@ -331,12 +445,14 @@ export function createSapporoRailNetwork(scene, mapGround) {
   xrayHeadIM.renderOrder = 53;
   xrayCarIM.frustumCulled = false;
   xrayHeadIM.frustumCulled = false;
+  rootGroup.add(xrayCarIM, xrayHeadIM);
 
-  rootGroup.add(bodyIM, stripeIM, windowIM, headIM, tailIM, xrayCarIM, xrayHeadIM);
-
-  // Build per-line geometry & runtime structures
-  let solidCarCursor = 0;
+  // Allocation cursors for train registration
   let solidTrainCursor = 0;
+  let bogieCursor = 0;
+  let hvacCursor = 0;
+  let pantoCursor = 0;
+  let couplerCursor = 0;
   let xrayCarCursor = 0;
   let xrayTrainCursor = 0;
 
@@ -397,11 +513,12 @@ export function createSapporoRailNetwork(scene, mapGround) {
       }
     }
 
-    const curve = new THREE.CatmullRomCurve3(rawPts, false, 'centripetal', 0.35);
+    const isClosed = Boolean(spec.closed);
+    const curve = new THREE.CatmullRomCurve3(rawPts, isClosed, 'centripetal', isClosed ? 0.22 : 0.35);
     const totalLength = curve.getLength();
 
     // Estimate arc-length of each named station along the curve
-    const denseN = Math.max(140, Math.round(totalLength / 45));
+    const denseN = Math.max(isClosed ? 260 : 140, Math.round(totalLength / (isClosed ? 26 : 45)));
     const samples = [];
     const sampleArcLens = new Float32Array(denseN + 1);
     let accLen = 0;
@@ -422,7 +539,8 @@ export function createSapporoRailNetwork(scene, mapGround) {
       // Find closest sample to rawPts[i]
       let bestIdx = 0;
       let bestD2 = Infinity;
-      for (let j = 0; j < samples.length; j++) {
+      const searchMax = isClosed ? samples.length - 1 : samples.length;
+      for (let j = 0; j < searchMax; j++) {
         const d2 = samples[j].pos.distanceToSquared(rawPts[i]);
         if (d2 < bestD2) {
           bestD2 = d2;
@@ -442,20 +560,24 @@ export function createSapporoRailNetwork(scene, mapGround) {
     entry.totalLength = accLen;
     entry.samples = samples;
     entry.sampleArcLens = sampleArcLens;
-    entry.schedule = buildStationSchedule(curve, stationArcLengths, accLen, spec.speedMps, spec.dwellSec);
+    entry.schedule = buildStationSchedule(curve, stationArcLengths, accLen, spec.speedMps, spec.dwellSec, isClosed);
 
     // 2. Build Track Bed / Tunnel / Glowing Guideway Ribbon
     const isSubway = spec.group === 'subway';
+    const isTram = spec.group === 'tram';
 
     // Solid glowing track core (visible directly above ground, or inside translucent underground mode)
     const solidTrackMat = new THREE.MeshStandardMaterial({
       color: spec.colorHex,
       emissive: spec.glowHex,
-      emissiveIntensity: isSubway ? 1.55 : 0.95,
+      emissiveIntensity: isSubway ? 1.55 : (isTram ? 1.15 : 0.95),
       roughness: 0.35,
       metalness: 0.25,
     });
-    const solidTrackGeo = buildRibbonGeometry(samples, isSubway ? 3.4 : 3.2, -0.35, isSubway ? 0.65 : 0.35);
+    const trackHalfW = isSubway ? 3.4 : (isTram ? 2.15 : 3.2);
+    const trackH = isSubway ? 0.65 : (isTram ? 0.14 : 0.35);
+    const trackYOff = isSubway ? -0.35 : (isTram ? -0.02 : -0.35);
+    const solidTrackGeo = buildRibbonGeometry(samples, trackHalfW, trackYOff, trackH);
     const solidTrackMesh = new THREE.Mesh(solidTrackGeo, solidTrackMat);
     solidTrackMesh.renderOrder = 2;
     infraGroup.add(solidTrackMesh);
@@ -482,6 +604,12 @@ export function createSapporoRailNetwork(scene, mapGround) {
       const tunnelFloorGeo = buildRibbonGeometry(samples, 4.6, -1.2, 0.75);
       const tunnelFloor = new THREE.Mesh(tunnelFloorGeo, ballastMat);
       infraGroup.add(tunnelFloor);
+    } else if (isTram) {
+      // Sleek street-flush dark steel/stone tramway strip embedded in Sapporo avenues
+      const tramBedGeo = buildRibbonGeometry(samples, 2.95, -0.08, 0.10);
+      const tramBed = new THREE.Mesh(tramBedGeo, ballastMat);
+      tramBed.receiveShadow = true;
+      infraGroup.add(tramBed);
     } else {
       // JR dark gravel/ballast bed beneath the line-colored rail guide
       const bedGeo = buildRibbonGeometry(samples, 4.4, -0.85, 0.6);
@@ -561,7 +689,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
     }
 
     // 4. Station Platforms, Glowing Rings & Labels (every named stop)
-    const ringGeo = new THREE.RingGeometry(6.5, 10.2, 24);
+    const ringGeo = new THREE.RingGeometry(isTram ? 3.6 : 6.5, isTram ? 5.6 : 10.2, 24);
     ringGeo.rotateX(-Math.PI / 2);
     const stationRingMat = new THREE.MeshBasicMaterial({
       color: spec.glowHex,
@@ -583,7 +711,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
         })
       : null;
 
-    const platGeo = new THREE.BoxGeometry(88, 1.3, 10.5);
+    const platGeo = new THREE.BoxGeometry(isTram ? 22 : 88, isTram ? 0.45 : 1.3, isTram ? 5.4 : 10.5);
     const platMat = new THREE.MeshStandardMaterial({
       color: 0x263144,
       emissive: spec.colorHex,
@@ -598,7 +726,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
       // Station platform block at track level
       const plat = new THREE.Mesh(platGeo, platMat);
       plat.position.copy(st.pos);
-      plat.position.y -= 0.4;
+      plat.position.y -= isTram ? 0.10 : 0.4;
       plat.rotation.y = yaw;
       infraGroup.add(plat);
 
@@ -632,16 +760,17 @@ export function createSapporoRailNetwork(scene, mapGround) {
         infraGroup.add(shaft);
       }
 
-      // Floating clickable label for every station; skip duplicates at shared hubs
-      const labelKey = st.pt.name;
+      // Floating clickable label for every station (all 24 streetcar stops included!)
+      const labelKey = isTram ? `tram:${st.pt.name}` : st.pt.name;
       if (st.pt.name && !placedStationLabels.has(labelKey)) {
         placedStationLabels.add(labelKey);
         entry.ownedLabelNames.push(labelKey);
+        const isJR = spec.group === 'jr';
         const badgeTex = createStationBadgeTexture(
           st.pt.name,
           st.pt.code || spec.shortName,
           spec.colorHex,
-          !isSubway,
+          isJR,
           !isMajor
         );
         const spriteMat = new THREE.SpriteMaterial({
@@ -652,9 +781,32 @@ export function createSapporoRailNetwork(scene, mapGround) {
           fog: false, // keep names readable through winter atmosphere fog
         });
         const sprite = new THREE.Sprite(spriteMat);
-        const badgeY = Math.max(st.groundY, st.pos.y) + (isSubway ? (isMajor ? 38 : 30) : (isMajor ? 44 : 34));
+        // If a tram stop shares a hub name with a subway station (e.g. すすきの), lift slightly so both panels stay readable
+        const sharedNameLift = isTram && placedStationLabels.has(st.pt.name) ? 16 : 0;
+        const badgeY = Math.max(st.groundY, st.pos.y) + (
+          isJR ? (isMajor ? 44 : 34) : (isMajor ? 38 : 30)
+        ) + sharedNameLift;
         sprite.position.set(st.pos.x, badgeY, st.pos.z);
-        const baseW = isMajor ? 66 : 52;
+
+        // Subtle vertical stem connecting streetcar stop ring up to its floating panel
+        if (isTram) {
+          const stemH = Math.max(8, badgeY - st.pos.y - 6);
+          const stem = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.45, 0.95, stemH, 8, 1, true),
+            new THREE.MeshBasicMaterial({
+              color: spec.glowHex,
+              transparent: true,
+              opacity: 0.28,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+            })
+          );
+          stem.position.set(st.pos.x, st.pos.y + stemH * 0.5, st.pos.z);
+          infraGroup.add(stem);
+        }
+
+        const wideRatio = isTram ? 1.08 : 1.0;
+        const baseW = (isMajor ? 66 : 52) * wideRatio;
         const baseH = isMajor ? 19.5 : 15;
         sprite.scale.set(baseW, baseH, 1);
         sprite.renderOrder = isMajor ? 60 : 58;
@@ -662,15 +814,17 @@ export function createSapporoRailNetwork(scene, mapGround) {
         sprite.userData.baseH = baseH;
         sprite.userData.isMajor = isMajor;
         sprite.userData.isStationBadge = true;
+        sprite.userData.stationKey = labelKey;
         sprite.userData.stationName = st.pt.name;
         sprite.userData.peakOpacity = isMajor ? 0.94 : 0.90;
-        // City-scale viewing: keep labels visible across Sapporo (~10–15 km)
+        // City-scale viewing: identical visibility range across subway, JR, and streetcar
         sprite.userData.fadeStart = isMajor ? 9000 : 7500;
         sprite.userData.fadeEnd = isMajor ? 14000 : 12000;
         infraGroup.add(sprite);
 
-        const lineKey = isSubway ? spec.id : 'jr';
+        const lineKey = isSubway ? spec.id : (isTram ? 'tram' : 'jr');
         stationLabelByName.set(labelKey, {
+          key: labelKey,
           sprite,
           name: st.pt.name,
           code: st.pt.code || '',
@@ -678,6 +832,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
           lineKey,
           lineName: spec.name,
           isSubway,
+          isTram,
           relY: st.pt.relY,
           trackPos: st.pos.clone(),
           groundY: st.groundY,
@@ -715,8 +870,8 @@ export function createSapporoRailNetwork(scene, mapGround) {
     if (_pickRaycaster.params.Sprite) _pickRaycaster.params.Sprite.threshold = prevThresh;
     if (!hits.length) return null;
 
-    const name = hits[0].object.userData.stationName;
-    return name ? stationLabelByName.get(name) || null : null;
+    const key = hits[0].object.userData.stationKey || hits[0].object.userData.stationName;
+    return key ? stationLabelByName.get(key) || null : null;
   }
 
   /**
@@ -730,8 +885,8 @@ export function createSapporoRailNetwork(scene, mapGround) {
       ? info.groundY + 8
       : Math.max(info.groundY, info.trackPos.y) + 12;
 
-    const dist = underground ? 210 : 250;
-    const height = underground ? 105 : 88;
+    const dist = underground ? 210 : (info.isTram ? 155 : 250);
+    const height = underground ? 105 : (info.isTram ? 64 : 88);
     const eye = new THREE.Vector3(
       tgt.x - dist * 0.78,
       tgt.y + height,
@@ -739,13 +894,14 @@ export function createSapporoRailNetwork(scene, mapGround) {
     );
 
     const codePart = info.code ? ` ${info.code}` : '';
+    const prefix = info.isSubway ? 'SUBWAY' : (info.isTram ? 'STREETCAR' : 'JR');
     return {
       name: info.name,
       code: info.code,
       eye,
       tgt,
       suggestXray: underground,
-      title: `${info.isSubway ? 'SUBWAY' : 'JR'} · ${info.name}${codePart}`,
+      title: `${prefix} · ${info.name}${codePart}`,
       sub: `${info.lineName} — 駅名バッジから移動 · ドラッグで周囲を確認`,
     };
   }
@@ -759,36 +915,34 @@ export function createSapporoRailNetwork(scene, mapGround) {
     const trains = [];
     const totalDirTrains = spec.trainCountPerDir;
     const isSubway = spec.group === 'subway';
+    const isTram = spec.group === 'tram';
 
     for (const dir of [1, -1]) {
       for (let k = 0; k < totalDirTrains; k++) {
         // Stagger phases evenly around the one-way cycle
         const phase = (k + (dir === -1 ? 0.5 : 0)) / totalDirTrains;
-        // For JR lines, make some trains sleek Limited Express livery (silver + Hokkaido blue/lilac stripe)!
-        const isLimitedExpress = !isSubway && k === 0;
+        const liveryKey = resolveTrainLiveryKey(spec, k, dir);
+        const pool = carPools[liveryKey];
 
-        const trainObj = {
-          dir,
-          phase,
-          isLimitedExpress,
-          solidCarStart: solidCarCursor,
-          solidTrainIdx: solidTrainCursor,
-          xrayCarStart: isSubway ? xrayCarCursor : -1,
-          xrayTrainIdx: isSubway ? xrayTrainCursor : -1,
-        };
-
-        // Assign instance colors once for every car in this train
-        const bodyHex = isLimitedExpress ? 0xf1f5f9 : spec.bodyHex;
-        const stripeHex = isLimitedExpress
-          ? (spec.id === 'jr-chitose' ? 0x38bdf8 : 0xa855f7) // Rapid Airport / Hokuto cyan-blue & Kamui/Lilac purple!
-          : spec.stripeHex;
-
+        // Pre-assign exact InstancedMesh slots for every car & detail part in this train!
+        const carSlots = [];
         for (let c = 0; c < spec.carsPerTrain; c++) {
-          tmpColor.setHex(bodyHex);
-          bodyIM.setColorAt(solidCarCursor + c, tmpColor);
-
-          tmpColor.setHex(stripeHex);
-          stripeIM.setColorAt(solidCarCursor + c, tmpColor);
+          const isEndCar = c === 0 || c === spec.carsPerTrain - 1;
+          const slot = {
+            isLead: c === 0,
+            isTail: c === spec.carsPerTrain - 1,
+            im: isEndCar ? pool.leadIM : pool.midIM,
+            imIdx: isEndCar ? pool.leadCursor++ : pool.midCursor++,
+            bogieStart: bogieCursor,
+            bogieCount: isTram ? 1 : 2,
+            hvacStart: hvacCursor,
+            hvacCount: isTram ? 1 : 2,
+            pantoIdx: hasPantograph(spec, c) ? pantoCursor++ : -1,
+            couplerIdx: c < spec.carsPerTrain - 1 ? couplerCursor++ : -1,
+          };
+          bogieCursor += slot.bogieCount;
+          hvacCursor += slot.hvacCount;
+          carSlots.push(slot);
 
           if (isSubway) {
             tmpColor.setHex(spec.glowHex);
@@ -796,7 +950,21 @@ export function createSapporoRailNetwork(scene, mapGround) {
           }
         }
 
-        solidCarCursor += spec.carsPerTrain;
+        const trainObj = {
+          dir,
+          phase,
+          liveryKey,
+          noseStyle: pool.noseStyle,
+          carSlots,
+          solidTrainIdx: solidTrainCursor,
+          xrayCarStart: isSubway ? xrayCarCursor : -1,
+          xrayTrainIdx: isSubway ? xrayTrainCursor : -1,
+        };
+
+        // Tint destination LED per line signature color
+        tmpColor.setHex(spec.glowHex);
+        destIM.setColorAt(solidTrainCursor, tmpColor);
+
         solidTrainCursor += 1;
         if (isSubway) {
           xrayCarCursor += spec.carsPerTrain;
@@ -824,8 +992,7 @@ export function createSapporoRailNetwork(scene, mapGround) {
     lineEntries.push(entry);
   }
 
-  if (bodyIM.instanceColor) bodyIM.instanceColor.needsUpdate = true;
-  if (stripeIM.instanceColor) stripeIM.instanceColor.needsUpdate = true;
+  if (destIM.instanceColor) destIM.instanceColor.needsUpdate = true;
   if (xrayCarIM.instanceColor) xrayCarIM.instanceColor.needsUpdate = true;
 
   // ==================== ASYNC GSI DEM ELEVATION REFINEMENT ====================
@@ -858,7 +1025,10 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   // ==================== FAST ARC-LENGTH CURVE SAMPLER ====================
   function samplePointAtDistance(entry, distMeters, outPos, outTan) {
-    const s = Math.max(0, Math.min(entry.totalLength, distMeters));
+    const len = entry.totalLength;
+    const s = entry.spec.closed
+      ? ((distMeters % len) + len) % len
+      : Math.max(0, Math.min(len, distMeters));
     const arr = entry.sampleArcLens;
     const n = arr.length - 1;
     // Binary search for segment containing arc-length s
@@ -880,19 +1050,27 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   // Reusable math scratch objects (zero GC allocations per frame!)
   const _pos = new THREE.Vector3();
+  const _subPos = new THREE.Vector3();
   const _tan = new THREE.Vector3();
   const _right = new THREE.Vector3();
   const _fwd = new THREE.Vector3();
   const _up = new THREE.Vector3();
   const _basis = new THREE.Matrix4();
   const _quat = new THREE.Quaternion();
+  const _tailQuat = new THREE.Quaternion();
+  const _glassQuat = new THREE.Quaternion();
+  const _rotY180 = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
+  const _tiltZ = new THREE.Quaternion();
+  const _zAxis = new THREE.Vector3(0, 0, 1);
   const _scale = new THREE.Vector3();
   const _mat = new THREE.Matrix4();
   const _hideMat = new THREE.Matrix4().makeScale(0, 0, 0);
 
   function isLineVisible(spec) {
     if (railMode === 'off') return false;
-    return spec.group === 'subway' ? Boolean(lineEnabled[spec.id]) : Boolean(lineEnabled.jr);
+    if (spec.group === 'subway') return Boolean(lineEnabled[spec.id]);
+    if (spec.group === 'tram') return Boolean(lineEnabled.tram);
+    return Boolean(lineEnabled.jr);
   }
 
   function syncVisibility() {
@@ -930,10 +1108,14 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
     // Dynamically adjust train interior window glow & headlight brightness by time of day
     const nightClamped = Math.max(0, Math.min(1.2, nightFactor));
-    solidWindowMat.emissiveIntensity = 0.55 + 2.35 * nightClamped;
-    solidHeadMat.emissiveIntensity = 1.8 + 3.8 * nightClamped;
-    solidTailMat.emissiveIntensity = 1.4 + 3.2 * nightClamped;
-    solidStripeMat.emissiveIntensity = 0.25 + 0.55 * nightClamped;
+    const winGlow = 0.28 + 1.95 * nightClamped;
+    for (const mat of Object.values(liveryMaterials)) {
+      mat.emissiveIntensity = winGlow;
+    }
+    solidHeadMat.emissiveIntensity = 1.9 + 4.2 * nightClamped;
+    solidTailMat.emissiveIntensity = 1.4 + 3.4 * nightClamped;
+    destLedMat.emissiveIntensity = 1.4 + 2.2 * nightClamped;
+    cabGlassMat.emissiveIntensity = 0.12 + 0.35 * nightClamped;
 
     // Scale station badges with camera distance; keep names readable city-wide
     if (cameraPos) {
@@ -966,18 +1148,27 @@ export function createSapporoRailNetwork(scene, mapGround) {
       const { spec, schedule, trains, totalLength } = entry;
       const visible = isLineVisible(spec);
       const isSubway = spec.group === 'subway';
+      const isTram = spec.group === 'tram';
       const carPitch = spec.carLength + spec.carGap;
 
       for (const tr of trains) {
         if (!visible) {
-          for (let c = 0; c < spec.carsPerTrain; c++) {
-            bodyIM.setMatrixAt(tr.solidCarStart + c, _hideMat);
-            stripeIM.setMatrixAt(tr.solidCarStart + c, _hideMat);
-            windowIM.setMatrixAt(tr.solidCarStart + c, _hideMat);
+          for (let c = 0; c < tr.carSlots.length; c++) {
+            const slot = tr.carSlots[c];
+            slot.im?.setMatrixAt(slot.imIdx, _hideMat);
+            for (let b = 0; b < slot.bogieCount; b++) bogieIM.setMatrixAt(slot.bogieStart + b, _hideMat);
+            for (let h = 0; h < slot.hvacCount; h++) hvacIM.setMatrixAt(slot.hvacStart + h, _hideMat);
+            if (slot.pantoIdx >= 0) pantoIM.setMatrixAt(slot.pantoIdx, _hideMat);
+            if (slot.couplerIdx >= 0) couplerIM.setMatrixAt(slot.couplerIdx, _hideMat);
             if (isSubway) xrayCarIM.setMatrixAt(tr.xrayCarStart + c, _hideMat);
           }
-          headIM.setMatrixAt(tr.solidTrainIdx, _hideMat);
-          tailIM.setMatrixAt(tr.solidTrainIdx, _hideMat);
+          cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+          cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
+          destIM.setMatrixAt(tr.solidTrainIdx, _hideMat);
+          headIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+          headIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
+          tailIM.setMatrixAt(tr.solidTrainIdx * 2, _hideMat);
+          tailIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _hideMat);
           if (isSubway) xrayHeadIM.setMatrixAt(tr.xrayTrainIdx, _hideMat);
           continue;
         }
@@ -989,19 +1180,24 @@ export function createSapporoRailNetwork(scene, mapGround) {
           leadS = totalLength - leadS;
         }
 
-        // Keep entire train formation comfortably within track endpoints
-        const trainTotalLen = spec.carsPerTrain * carPitch;
-        const margin = trainTotalLen * 0.55;
-        if (tr.dir === 1) {
-          leadS = Math.max(margin, Math.min(totalLength - 8, leadS));
+        // For open lines, keep entire train comfortably inside termini; for closed loops, wrap seamlessly!
+        if (spec.closed) {
+          leadS = ((leadS % totalLength) + totalLength) % totalLength;
         } else {
-          leadS = Math.max(8, Math.min(totalLength - margin, leadS));
+          const trainTotalLen = spec.carsPerTrain * carPitch;
+          const margin = trainTotalLen * 0.55;
+          if (tr.dir === 1) {
+            leadS = Math.max(margin, Math.min(totalLength - 8, leadS));
+          } else {
+            leadS = Math.max(8, Math.min(totalLength - margin, leadS));
+          }
         }
 
         // Lateral double-track offset (+trackGaugeHalf on left-hand Japanese rail traffic!)
         const lateralSign = tr.dir === 1 ? -1 : 1;
 
-        for (let c = 0; c < spec.carsPerTrain; c++) {
+        for (let c = 0; c < tr.carSlots.length; c++) {
+          const slot = tr.carSlots[c];
           const carCenterS = leadS - tr.dir * (c * carPitch + spec.carLength * 0.5);
           samplePointAtDistance(entry, carCenterS, _pos, _tan);
 
@@ -1018,48 +1214,126 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
           const baseY = _pos.y;
 
-          // 1. Main metallic train body
-          _pos.y = baseY + spec.carHeight * 0.52;
+          // 1. Sculpted 3D Carbody (lead faces forward, tail rotated 180 deg so aerodynamic nose faces rear!)
+          _subPos.set(_pos.x, baseY, _pos.z);
           _scale.set(spec.carLength, spec.carHeight, spec.carWidth);
-          _mat.compose(_pos, _quat, _scale);
-          bodyIM.setMatrixAt(tr.solidCarStart + c, _mat);
+          if (slot.isTail && !slot.isLead) {
+            _tailQuat.copy(_quat).multiply(_rotY180);
+            _mat.compose(_subPos, _tailQuat, _scale);
+          } else {
+            _mat.compose(_subPos, _quat, _scale);
+          }
+          slot.im?.setMatrixAt(slot.imIdx, _mat);
 
-          // 2. Signature line-color side & belt stripe
-          _pos.y = baseY + spec.carHeight * 0.42;
-          _scale.set(spec.carLength * 0.99, spec.carHeight * 0.24, spec.carWidth + 0.14);
-          _mat.compose(_pos, _quat, _scale);
-          stripeIM.setMatrixAt(tr.solidCarStart + c, _mat);
+          // 2. Undercarriage Bogie Trucks & Wheels (resting directly on rails at baseY!)
+          const bogieScale = isTram ? 0.62 : 0.96;
+          if (slot.bogieCount === 1) {
+            _subPos.set(_pos.x, baseY, _pos.z);
+            _scale.set(bogieScale, bogieScale, bogieScale);
+            _mat.compose(_subPos, _quat, _scale);
+            bogieIM.setMatrixAt(slot.bogieStart, _mat);
+          } else {
+            const bogieOff = spec.carLength * 0.30;
+            for (let b = 0; b < 2; b++) {
+              const sgn = b === 0 ? 1 : -1;
+              _subPos.set(_pos.x, baseY, _pos.z).addScaledVector(_fwd, sgn * bogieOff);
+              _scale.set(bogieScale, bogieScale, bogieScale);
+              _mat.compose(_subPos, _quat, _scale);
+              bogieIM.setMatrixAt(slot.bogieStart + b, _mat);
+            }
+          }
 
-          // 3. Illuminated passenger windows band
-          _pos.y = baseY + spec.carHeight * 0.68;
-          _scale.set(spec.carLength * 0.88, spec.carHeight * 0.30, spec.carWidth + 0.12);
-          _mat.compose(_pos, _quat, _scale);
-          windowIM.setMatrixAt(tr.solidCarStart + c, _mat);
+          // 3. Rooftop Air-Conditioning / HVAC Units
+          const roofY = baseY + spec.carHeight * 0.985;
+          if (slot.hvacCount === 1) {
+            _subPos.set(_pos.x, roofY, _pos.z);
+            _scale.set(spec.carLength * 0.44, 0.36, spec.carWidth * 0.62);
+            _mat.compose(_subPos, _quat, _scale);
+            hvacIM.setMatrixAt(slot.hvacStart, _mat);
+          } else {
+            const hvacOff = spec.carLength * 0.22;
+            for (let h = 0; h < 2; h++) {
+              const sgn = h === 0 ? 1 : -1;
+              _subPos.set(_pos.x, roofY, _pos.z).addScaledVector(_fwd, sgn * hvacOff);
+              _scale.set(spec.carLength * 0.24, 0.42, spec.carWidth * 0.60);
+              _mat.compose(_subPos, _quat, _scale);
+              hvacIM.setMatrixAt(slot.hvacStart + h, _mat);
+            }
+          }
 
-          // 4. Underground X-Ray glowing car pass (for subway lines)
+          // 4. Rooftop Single-Arm Pantograph (JR electric, Tozai/Toho subways, & Sapporo Streetcars!)
+          if (slot.pantoIdx >= 0) {
+            const pScale = isTram ? 0.85 : (isSubway ? 0.72 : 1.05);
+            const pOff = isTram ? 0 : spec.carLength * 0.36;
+            _subPos.set(_pos.x, roofY + 0.02, _pos.z).addScaledVector(_fwd, pOff);
+            _scale.set(pScale, pScale, pScale);
+            _mat.compose(_subPos, _quat, _scale);
+            pantoIM.setMatrixAt(slot.pantoIdx, _mat);
+          }
+
+          // 5. Inter-Car Articulated Gangway Bellows (幌) bridging gap to next car
+          if (slot.couplerIdx >= 0) {
+            _subPos.set(_pos.x, baseY + spec.carHeight * 0.54, _pos.z)
+              .addScaledVector(_fwd, -(spec.carLength * 0.5 + spec.carGap * 0.5));
+            _scale.set(spec.carGap + 0.24, spec.carHeight * 0.72, spec.carWidth * 0.78);
+            _mat.compose(_subPos, _quat, _scale);
+            couplerIM.setMatrixAt(slot.couplerIdx, _mat);
+          }
+
+          // 6. Underground X-Ray glowing car pass (for subway lines)
           if (isSubway) {
             if (showXrayPass) {
-              _pos.y = baseY + spec.carHeight * 0.55;
+              _subPos.set(_pos.x, baseY + spec.carHeight * 0.55, _pos.z);
               _scale.set(spec.carLength * 0.98, spec.carHeight * 1.15, spec.carWidth * 1.25);
-              _mat.compose(_pos, _quat, _scale);
+              _mat.compose(_subPos, _quat, _scale);
               xrayCarIM.setMatrixAt(tr.xrayCarStart + c, _mat);
             } else {
               xrayCarIM.setMatrixAt(tr.xrayCarStart + c, _hideMat);
             }
           }
 
-          // 5. Front LED Headlights (lead car c === 0)
-          if (c === 0) {
-            _pos.y = baseY + spec.carHeight * 0.36;
-            _pos.addScaledVector(_fwd, spec.carLength * 0.5 + 0.12);
-            _scale.set(0.35, 0.72, spec.carWidth * 0.76);
-            _mat.compose(_pos, _quat, _scale);
-            headIM.setMatrixAt(tr.solidTrainIdx, _mat);
+          // 7. Front Driver Cab Windshield, Destination LED & Twin LED Headlights (lead car c === 0)
+          if (slot.isLead) {
+            const isExpress = tr.noseStyle === 'express';
+            const rakeAngle = isExpress ? 0.34 : (isTram ? 0.20 : 0.14);
+            const noseFront = spec.carLength * (isExpress ? 0.465 : 0.482);
+
+            // Sloped dark glossy driver windshield
+            _tiltZ.setFromAxisAngle(_zAxis, rakeAngle);
+            _glassQuat.copy(_quat).multiply(_tiltZ);
+            _subPos.set(_pos.x, baseY + spec.carHeight * (isExpress ? 0.64 : 0.66), _pos.z)
+              .addScaledVector(_fwd, noseFront);
+            _scale.set(0.18, spec.carHeight * (isExpress ? 0.32 : 0.34), spec.carWidth * (isExpress ? 0.78 : 0.86));
+            _mat.compose(_subPos, _glassQuat, _scale);
+            cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2, _mat);
+
+            // Glowing front LED Destination Display above windshield
+            _subPos.set(_pos.x, baseY + spec.carHeight * (isExpress ? 0.82 : 0.86), _pos.z)
+              .addScaledVector(_fwd, noseFront - (isExpress ? 0.42 : 0.16));
+            _scale.set(0.12, spec.carHeight * 0.085, spec.carWidth * 0.46);
+            _mat.compose(_subPos, _glassQuat, _scale);
+            destIM.setMatrixAt(tr.solidTrainIdx, _mat);
+
+            // Twin Left & Right LED Headlights
+            const lampSpan = spec.carWidth * 0.30;
+            const lampFwd = spec.carLength * (isExpress ? 0.498 : 0.495);
+            for (let s = 0; s < 2; s++) {
+              const sgn = s === 0 ? -1 : 1;
+              _subPos.set(_pos.x, baseY + spec.carHeight * 0.34, _pos.z)
+                .addScaledVector(_fwd, lampFwd)
+                .addScaledVector(_right, sgn * lampSpan);
+              const lScale = isTram ? 0.82 : 1.05;
+              _scale.set(lScale, lScale, lScale);
+              _mat.compose(_subPos, _quat, _scale);
+              headIM.setMatrixAt(tr.solidTrainIdx * 2 + s, _mat);
+            }
 
             if (isSubway) {
               if (showXrayPass) {
+                _subPos.set(_pos.x, baseY + spec.carHeight * 0.38, _pos.z)
+                  .addScaledVector(_fwd, spec.carLength * 0.51);
                 _scale.set(1.2, 1.2, spec.carWidth * 1.1);
-                _mat.compose(_pos, _quat, _scale);
+                _mat.compose(_subPos, _quat, _scale);
                 xrayHeadIM.setMatrixAt(tr.xrayTrainIdx, _mat);
               } else {
                 xrayHeadIM.setMatrixAt(tr.xrayTrainIdx, _hideMat);
@@ -1067,21 +1341,47 @@ export function createSapporoRailNetwork(scene, mapGround) {
             }
           }
 
-          // 6. Rear Crimson Taillights (tail car c === last)
-          if (c === spec.carsPerTrain - 1) {
-            _pos.y = baseY + spec.carHeight * 0.38;
-            _pos.addScaledVector(_fwd, -(spec.carLength * 0.5 + 0.12));
-            _scale.set(0.35, 0.68, spec.carWidth * 0.74);
-            _mat.compose(_pos, _quat, _scale);
-            tailIM.setMatrixAt(tr.solidTrainIdx, _mat);
+          // 8. Rear Driver Cab Windshield & Twin Crimson Taillights (tail car c === last)
+          if (slot.isTail) {
+            const isExpress = tr.noseStyle === 'express';
+            const rakeAngle = isExpress ? -0.34 : (isTram ? -0.20 : -0.14);
+            const noseRear = -spec.carLength * (isExpress ? 0.465 : 0.482);
+
+            _tiltZ.setFromAxisAngle(_zAxis, rakeAngle);
+            _glassQuat.copy(_quat).multiply(_tiltZ);
+            _subPos.set(_pos.x, baseY + spec.carHeight * (isExpress ? 0.64 : 0.66), _pos.z)
+              .addScaledVector(_fwd, noseRear);
+            _scale.set(0.18, spec.carHeight * (isExpress ? 0.32 : 0.34), spec.carWidth * (isExpress ? 0.78 : 0.86));
+            _mat.compose(_subPos, _glassQuat, _scale);
+            cabGlassIM.setMatrixAt(tr.solidTrainIdx * 2 + 1, _mat);
+
+            const lampSpan = spec.carWidth * 0.30;
+            const lampRear = -spec.carLength * (isExpress ? 0.498 : 0.495);
+            for (let s = 0; s < 2; s++) {
+              const sgn = s === 0 ? -1 : 1;
+              _subPos.set(_pos.x, baseY + spec.carHeight * 0.34, _pos.z)
+                .addScaledVector(_fwd, lampRear)
+                .addScaledVector(_right, sgn * lampSpan);
+              const lScale = isTram ? 0.82 : 1.05;
+              _scale.set(lScale, lScale, lScale);
+              _mat.compose(_subPos, _quat, _scale);
+              tailIM.setMatrixAt(tr.solidTrainIdx * 2 + s, _mat);
+            }
           }
         }
       }
     }
 
-    bodyIM.instanceMatrix.needsUpdate = true;
-    stripeIM.instanceMatrix.needsUpdate = true;
-    windowIM.instanceMatrix.needsUpdate = true;
+    for (const pool of Object.values(carPools)) {
+      if (pool.leadIM) pool.leadIM.instanceMatrix.needsUpdate = true;
+      if (pool.midIM) pool.midIM.instanceMatrix.needsUpdate = true;
+    }
+    bogieIM.instanceMatrix.needsUpdate = true;
+    hvacIM.instanceMatrix.needsUpdate = true;
+    pantoIM.instanceMatrix.needsUpdate = true;
+    couplerIM.instanceMatrix.needsUpdate = true;
+    cabGlassIM.instanceMatrix.needsUpdate = true;
+    destIM.instanceMatrix.needsUpdate = true;
     headIM.instanceMatrix.needsUpdate = true;
     tailIM.instanceMatrix.needsUpdate = true;
     if (showXrayPass) {
@@ -1092,23 +1392,29 @@ export function createSapporoRailNetwork(scene, mapGround) {
 
   syncVisibility();
 
-  function setStationHover(nameOrNull) {
+  function setStationHover(keyOrName) {
     for (const info of stationLabelByName.values()) {
-      info.sprite.userData.hovered = Boolean(nameOrNull) && info.name === nameOrNull;
+      info.sprite.userData.hovered = Boolean(keyOrName) && (info.key === keyOrName || info.name === keyOrName);
     }
   }
 
   function getStationInfo(name) {
-    return stationLabelByName.get(name) || null;
+    return stationLabelByName.get(name) || stationLabelByName.get(`tram:${name}`) || null;
   }
 
   /**
    * Prefer live DEM-refined station pose; fall back to catalog lat/lon metadata.
    */
   function resolveStationCameraView(name, fallbackMeta = null) {
-    const live = stationLabelByName.get(name);
+    const preferTram = Boolean(fallbackMeta?.isTram);
+    const live = preferTram
+      ? stationLabelByName.get(`tram:${name}`)
+      : stationLabelByName.get(name);
     if (live) return getStationCameraView(live);
-    if (!fallbackMeta) return null;
+    if (!fallbackMeta) {
+      const any = getStationInfo(name);
+      return any ? getStationCameraView(any) : null;
+    }
 
     const groundY = fallbackMeta.initGroundY ?? 0;
     const trackPos = latLonToGround(
@@ -1121,11 +1427,16 @@ export function createSapporoRailNetwork(scene, mapGround) {
       code: fallbackMeta.code || '',
       lineName: fallbackMeta.lineName || '',
       isSubway: Boolean(fallbackMeta.isSubway),
+      isTram: Boolean(fallbackMeta.isTram),
       relY: fallbackMeta.relY ?? 0,
       trackPos,
       groundY,
     });
   }
+
+  const totalTramTrains = RAIL_LINES
+    .filter(l => l.group === 'tram')
+    .reduce((s, l) => s + l.trainCountPerDir * 2, 0);
 
   return {
     group: rootGroup,
@@ -1142,7 +1453,8 @@ export function createSapporoRailNetwork(scene, mapGround) {
     getStats: () => ({
       totalTrains: totalSolidTrains,
       subwayTrains: totalXrayTrains,
-      jrTrains: totalSolidTrains - totalXrayTrains,
+      tramTrains: totalTramTrains,
+      jrTrains: totalSolidTrains - totalXrayTrains - totalTramTrains,
       stations: stationLabelByName.size,
     }),
   };
