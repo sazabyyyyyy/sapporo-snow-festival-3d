@@ -109,8 +109,8 @@ function createTower(height) {
 }
 
 function createAerialCabin() {
-  // Oversized vs real so cabins read clearly against GSI photo tiles from overlooks
-  const s = 2.4;
+  // Near real-scale aerial tram (~9–10m cabin) with slight boost for overlook readability
+  const s = 1.15;
   const g = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(9.5 * s, 4.2 * s, 5.6 * s),
@@ -157,7 +157,7 @@ function createAerialCabin() {
 }
 
 function createMiniCabin() {
-  const s = 1.8;
+  const s = 1.05;
   const g = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(3.2 * s, 2.8 * s, 3.2 * s),
@@ -218,10 +218,10 @@ function rebuildCables(group, lowerPath, upperPath, cableMeshes) {
     roughness: 0.28,
   });
   const meshes = [
-    new THREE.Mesh(buildCableGeometry(lowerPath, 0.45), cableMat),
-    new THREE.Mesh(buildCableGeometry(lowerPath.map(p => p.clone().setY(p.y - 0.7)), 0.28), cableMat),
-    new THREE.Mesh(buildCableGeometry(upperPath, 0.32), cableMat),
-    new THREE.Mesh(buildCableGeometry(upperPath.map(p => p.clone().setY(p.y - 0.5)), 0.2), cableMat),
+    new THREE.Mesh(buildCableGeometry(lowerPath, 0.22), cableMat),
+    new THREE.Mesh(buildCableGeometry(lowerPath.map(p => p.clone().setY(p.y - 0.55)), 0.14), cableMat),
+    new THREE.Mesh(buildCableGeometry(upperPath, 0.16), cableMat),
+    new THREE.Mesh(buildCableGeometry(upperPath.map(p => p.clone().setY(p.y - 0.4)), 0.1), cableMat),
   ];
   for (const m of meshes) {
     group.add(m);
@@ -279,18 +279,18 @@ export function createPlateauMoiwaRopeway(scene, mapGround = null) {
       group.remove(upperRibbon);
       upperRibbon.geometry.dispose();
     }
-    lowerRibbon = new THREE.Mesh(buildCableGeometry(paths.lower, 3.2), ribbonMat);
-    upperRibbon = new THREE.Mesh(buildCableGeometry(paths.upper, 2.2), ribbonMat);
+    lowerRibbon = new THREE.Mesh(buildCableGeometry(paths.lower, 1.4), ribbonMat);
+    upperRibbon = new THREE.Mesh(buildCableGeometry(paths.upper, 1.0), ribbonMat);
     group.add(lowerRibbon, upperRibbon);
   }
   rebuildRibbons();
 
   // Station halls at ground level (below cable attach)
-  const hallSanroku = createStationHall(1.0, 0xc62828);
+  const hallSanroku = createStationHall(0.62, 0xc62828);
   hallSanroku.position.set(sanroku.x, sanroku.y - CLEAR_LOWER, sanroku.z);
-  const hallChufuku = createStationHall(0.85, 0x2563eb);
+  const hallChufuku = createStationHall(0.52, 0x2563eb);
   hallChufuku.position.set(chufuku.x, chufuku.y - CLEAR_LOWER, chufuku.z);
-  const hallSancho = createStationHall(0.9, 0xc62828);
+  const hallSancho = createStationHall(0.55, 0xc62828);
   hallSancho.position.set(sancho.x, sancho.y - CLEAR_UPPER, sancho.z);
   // Orient halls roughly along the cable approach
   for (const [hall, a, b] of [
