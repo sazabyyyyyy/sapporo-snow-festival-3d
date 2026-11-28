@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -30,6 +29,7 @@ import { createVisitorLayer } from './visitorLayer.js';
 import { createParksLayer } from './parksLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
 import { buildLiveAtmosphere } from './realtimeAtmosphere.js';
+import { createMapCameraControls } from './mapGestures.js';
 
 // ==================== DOM REFS ====================
 const wrap = document.getElementById('stage-wrap');
@@ -111,12 +111,13 @@ scene.environmentIntensity = 0.32;
 const camera = new THREE.PerspectiveCamera(46, 16 / 9, 2.0, 45000);
 camera.position.set(0, 35, 90);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
-controls.maxPolarAngle = Math.PI * 0.49;
-controls.minDistance = 12;
-controls.maxDistance = 12000;
+// Google Maps–like pan / rotate / zoom / tilt (mouse + touch)
+const controls = createMapCameraControls(camera, renderer.domElement, {
+  minDistance: 12,
+  maxDistance: 12000,
+  minPolarAngle: 0.08,
+  maxPolarAngle: Math.PI * 0.49,
+});
 controls.target.copy(SAPPORO_POINTS.odoriNishi4).setY(12);
 
 // ==================== POST-PROCESSING (UNREAL BLOOM + ACES OUTPUT) ====================
@@ -743,11 +744,11 @@ function updateHudTitle() {
   const w = activeWardId ? WARD_BY_ID[activeWardId] : null;
   if (w) {
     shotTitle.textContent = `SAPPORO WARD · ${w.name}`;
-    shotSub.textContent = `${w.area} — ドラッグ回転・ホイールズーム・右ドラッグ移動`;
+    shotSub.textContent = `${w.area} — ドラッグ移動・右ドラッグ回転・Shiftで傾き・ホイールズーム`;
     return;
   }
   shotTitle.textContent = 'FREE DRONE CAMERA · PLATEAU SAPPORO';
-  shotSub.textContent = '実寸PLATEAU札幌市街を自由飛行 — ドラッグ回転・ホイールズーム・右ドラッグ移動';
+  shotSub.textContent = '実寸PLATEAU札幌市街を自由飛行 — ドラッグ移動・右ドラッグ回転・Shiftで傾き・ホイールズーム';
 }
 
 function refreshChromeUI() {
@@ -817,7 +818,7 @@ function requestCurrentLocation() {
       activeWardId = nearest.id;
       activeLocationInfo = {
         title: `CURRENT LOCATION · 現在地（${nearest.name}付近）`,
-        sub: 'カメラを現在地付近へ移動しました — ドラッグ回転・ズーム可能',
+        sub: 'カメラを現在地付近へ移動しました — ドラッグ移動・ズーム可能',
       };
       controls.enabled = true;
       flyAnim = {
@@ -884,7 +885,7 @@ function applyRailMode(mode) {
   const isXray = mode === 'xray';
   mapGround.setUndergroundXray(isXray);
   terrain.setUndergroundXray(isXray);
-  controls.maxPolarAngle = isXray ? Math.PI * 0.56 : Math.PI * 0.49;
+  controls.setPolarLimits(0.08, isXray ? Math.PI * 0.56 : Math.PI * 0.49);
 
   if (mode === 'on') {
     btnRail.textContent = '🚇 鉄道 ON';
@@ -1564,7 +1565,7 @@ document.addEventListener('click', ev => {
 
 const tutorial = initTutorial({
   steps: PLATEAU_TUTORIAL_STEPS,
-  storageKey: 'plateau-tutorial-v2-done',
+  storageKey: 'plateau-tutorial-v3-done',
   setUiChromeOpen,
   openRailPanel: setRailPanelOpen,
   openVisitorPanel: setVisitorPanelOpen,
@@ -1704,7 +1705,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
   const dx = ev.clientX - g.x;
   const dy = ev.clientY - g.y;
   const dt = performance.now() - g.t;
-  // Treat as click only when almost no drag (avoid fighting OrbitControls)
+  // Treat as click only when almost no drag (avoid fighting map camera controls)
   if (dx * dx + dy * dy > 36 || dt > 700) return;
 
   const ndc = eventToNdc(ev);
