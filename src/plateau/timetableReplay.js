@@ -149,6 +149,7 @@ export function fillStationArcs(entry, rawPts) {
     names: [],
     arcs: [],
     byCode: new Map(),
+    byName: new Map(),
   };
   const isClosed = Boolean(entry.spec.closed);
   const searchMax = isClosed ? entry.samples.length - 1 : entry.samples.length;
