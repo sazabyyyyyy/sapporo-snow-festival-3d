@@ -27,7 +27,9 @@ import { createSapporoRailNetwork } from './railNetwork.js';
 import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
 import { createPlateauMoiwaRopeway } from './moiwaRopeway.js';
 import { createVisitorLayer } from './visitorLayer.js';
+import { createParksLayer } from './parksLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
+import { buildLiveAtmosphere } from './realtimeAtmosphere.js';
 
 // ==================== DOM REFS ====================
 const wrap = document.getElementById('stage-wrap');
@@ -38,6 +40,8 @@ const weatherButtons = Array.from(document.querySelectorAll('#weather-bar button
 const camPadButtons = Array.from(document.querySelectorAll('#cam-pad button[data-cam-act]'));
 const camPad = document.getElementById('cam-pad');
 const btnPadToggle = document.getElementById('btn-pad-toggle');
+const btnLiveTime = document.getElementById('btn-live-time');
+const weatherModeNote = document.getElementById('weather-mode-note');
 const lblPrecip = document.getElementById('lbl-precip');
 const shotTitle = document.getElementById('shot-title');
 const shotSub = document.getElementById('shot-sub');
@@ -67,6 +71,7 @@ const visitorListEl = document.getElementById('visitor-list');
 const visitorListCountEl = document.getElementById('visitor-list-count');
 const visitorDetailEl = document.getElementById('visitor-detail');
 const btnMap = document.getElementById('btn-map');
+const btnParks = document.getElementById('btn-parks');
 const btnStyle = document.getElementById('btn-style');
 const btnProj = document.getElementById('btn-proj');
 const btnScope = document.getElementById('btn-scope');
@@ -254,6 +259,7 @@ const festivalOverlay = createPlateauFestivalOverlay(scene, snowBump, projMappin
 const railNetwork = createSapporoRailNetwork(scene, mapGround);
 const moiwaRopeway = createPlateauMoiwaRopeway(scene, mapGround);
 const visitorLayer = createVisitorLayer(scene);
+const parksLayer = createParksLayer(scene);
 
 // ==================== 3D CURRENT LOCATION BEACON MARKER ====================
 const locMarker = new THREE.Group();
@@ -604,7 +610,7 @@ function applyAtmosphere(env) {
   else lblPrecip.textContent = '降水';
 
   timeButtons.forEach((b, i) => {
-    b.className = 'ctrl-btn flex-1' + (i === timeIdx ? ' on' : '');
+    b.className = 'ctrl-btn flex-1' + (!liveTimeMode && i === timeIdx ? ' on' : '');
   });
   seasonButtons.forEach(b => {
     b.className = 'ctrl-btn flex-1' + (b.dataset.season === activeSeason ? ' on' : '');
@@ -612,10 +618,25 @@ function applyAtmosphere(env) {
   weatherButtons.forEach(b => {
     b.className = 'ctrl-btn flex-1' + (b.dataset.weather === activeWeather ? ' on' : '');
   });
+
+  if (btnLiveTime) {
+    btnLiveTime.textContent = liveTimeMode
+      ? `実時刻 ON · ${env.clock}`
+      : '実時刻 OFF';
+    btnLiveTime.className = 'ctrl-btn chip w-full text-left mb-1.5' + (liveTimeMode ? ' soft-on' : '');
+  }
+  if (weatherModeNote) {
+    weatherModeNote.textContent = liveTimeMode
+      ? '実時刻: 時計・日照は Asia/Tokyo。天候は手動（サンプル）。'
+      : '天候は手動（サンプル）。実時刻は時計・日照のみ連動。';
+  }
 }
 
 // ==================== VIEW / STATE ====================
 let timeIdx = 2; // 昼
+let liveTimeMode = false;
+let liveEnv = null;
+let lastLiveClockKey = '';
 let projEnabled = false;
 let scopeOn = true;
 let snowAmount = 0.08;
@@ -626,6 +647,40 @@ let activeLocationInfo = null;
 let flyAnim = null; // Smooth camera fly-to when choosing a ward / station / preset
 
 const WARD_BY_ID = Object.fromEntries(SAPPORO_WARD_VIEWS.map(w => [w.id, w]));
+
+function getActiveEnv() {
+  return liveTimeMode && liveEnv ? liveEnv : TIME_PRESETS[timeIdx];
+}
+
+/** Sync sun / night / TV-tower clock from Asia/Tokyo (minute resolution). */
+function syncLiveAtmosphere(force = false) {
+  const { env, parts, season } = buildLiveAtmosphere(TIME_PRESETS);
+  const key = parts.clock;
+  if (!force && key === lastLiveClockKey && liveEnv) {
+    return false;
+  }
+  lastLiveClockKey = key;
+  liveEnv = env;
+  // Align calendar season only when entering live mode; weather stays manual.
+  if (force) {
+    activeSeason = season;
+    if (activeSeason === 'winter' && activeWeather === 'clear') activeWeather = 'snow';
+    else if (activeSeason !== 'winter' && activeWeather === 'snow') activeWeather = 'clear';
+  }
+  applyAtmosphere(liveEnv);
+  return true;
+}
+
+function setLiveTimeMode(on) {
+  liveTimeMode = !!on;
+  if (liveTimeMode) {
+    syncLiveAtmosphere(true);
+  } else {
+    liveEnv = null;
+    lastLiveClockKey = '';
+    applyAtmosphere(TIME_PRESETS[timeIdx]);
+  }
+}
 
 applyAtmosphere(TIME_PRESETS[timeIdx]);
 
@@ -1056,6 +1111,7 @@ const VISITOR_KIND_STYLES = {
   tourism: 'border-amber-400/50 bg-amber-500/20 text-amber-100',
   toilet: 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100',
   wifi: 'border-sky-400/50 bg-sky-500/20 text-sky-100',
+  porocle: 'border-rose-400/50 bg-rose-500/20 text-rose-100',
 };
 
 let visitorPanelVisible = false;
@@ -1136,6 +1192,10 @@ function renderVisitorDetail(item) {
     if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
     bits.push(`<div>冬季利用: ${item.winter ? '可' : '不可／不明'}</div>`);
     bits.push(`<div>多目的: ${item.accessible ? 'あり' : 'なし'} / 温水洗浄便座: ${item.washlet ? 'あり' : 'なし'}</div>`);
+  } else if (item.kind === 'porocle') {
+    if (item.portNo) bits.push(`<div>ポート番号: ${escapeHtml(item.portNo)}</div>`);
+    if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
+    bits.push('<div class="mt-1 text-slate-400">シェアサイクル ポロクル</div>');
   }
 
   visitorDetailEl.innerHTML = bits.join('');
@@ -1166,7 +1226,7 @@ function renderVisitorList() {
     dot.style.background = meta?.css || '#94a3b8';
 
     const kind = document.createElement('span');
-    kind.className = 'text-[9px] text-slate-400 w-8 shrink-0';
+    kind.className = 'text-[9px] text-slate-400 w-10 shrink-0';
     kind.textContent = meta?.label || '';
 
     const name = document.createElement('span');
@@ -1178,6 +1238,7 @@ function renderVisitorList() {
     if (item.kind === 'tourism') tag.textContent = item.area || '';
     else if (item.kind === 'toilet') tag.textContent = item.winter ? '冬◎' : '';
     else if (item.kind === 'wifi') tag.textContent = 'Wi-Fi';
+    else if (item.kind === 'porocle') tag.textContent = item.portNo ? `#${item.portNo}` : 'ポロクル';
 
     btn.append(dot, kind, name, tag);
     btn.addEventListener('click', ev => {
@@ -1215,7 +1276,9 @@ function flyToVisitor(item) {
       ? `${item.area || '都心'} — ${item.category || '観光スポット'}（札幌市オープンデータ）`
       : item.kind === 'wifi'
         ? `${item.ssid || 'Sapporo City Wi-Fi'} — 公衆無線LAN`
-        : `${item.winter ? '冬季利用可' : '冬季利用注意'} — 中央区公園トイレ`,
+        : item.kind === 'porocle'
+          ? `${item.address || '札幌市内'} — シェアサイクル ポロクル`
+          : `${item.winter ? '冬季利用可' : '冬季利用注意'} — 中央区公園トイレ`,
   };
   controls.enabled = true;
   flyAnim = {
@@ -1290,15 +1353,45 @@ btnMap.addEventListener('click', () => {
   mapGround.update(controls.target);
 });
 
+function syncParksToggleBtn() {
+  if (!btnParks) return;
+  const on = parksLayer.isVisible();
+  btnParks.textContent = on ? '🌳 公園緑地 ON' : '🌳 公園緑地 OFF';
+  btnParks.className = 'ctrl-btn chip text-left' + (on ? ' soft-on' : '');
+}
+
+btnParks?.addEventListener('click', () => {
+  parksLayer.setVisible(!parksLayer.isVisible());
+  syncParksToggleBtn();
+  if (parksLayer.isVisible()) {
+    const src = parksLayer.source;
+    shotTitle.textContent = 'PARKS · 公園緑地';
+    shotSub.textContent = src
+      ? `${src.name}（${parksLayer.featureCount}件・都心）— ${src.provider}`
+      : `公園緑地ポリゴン ${parksLayer.featureCount}件（札幌市オープンデータ）`;
+  }
+});
+syncParksToggleBtn();
+
 btnStyle.addEventListener('click', () => {
   whiteModelMode = !whiteModelMode;
   winterUniforms.uWhiteModel.value = whiteModelMode ? 1.0 : 0.0;
   btnStyle.textContent = whiteModelMode ? 'ホワイト模型' : 'リアル質感';
 });
 
+btnLiveTime?.addEventListener('click', () => {
+  setLiveTimeMode(!liveTimeMode);
+});
+
 timeButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => {
     timeIdx = idx;
+    // Manual preset exits live clock/sun sync
+    if (liveTimeMode) {
+      liveTimeMode = false;
+      liveEnv = null;
+      lastLiveClockKey = '';
+    }
     applyAtmosphere(TIME_PRESETS[timeIdx]);
     refreshTimetableUI();
   });
@@ -1315,7 +1408,7 @@ seasonButtons.forEach(btn => {
     } else if (activeSeason !== 'winter' && activeWeather === 'snow') {
       activeWeather = 'clear';
     }
-    applyAtmosphere(TIME_PRESETS[timeIdx]);
+    applyAtmosphere(getActiveEnv());
   });
 });
 
@@ -1324,7 +1417,7 @@ weatherButtons.forEach(btn => {
     const nextWeather = btn.dataset.weather;
     if (!nextWeather) return;
     activeWeather = nextWeather;
-    applyAtmosphere(TIME_PRESETS[timeIdx]);
+    applyAtmosphere(getActiveEnv());
   });
 });
 
@@ -1788,8 +1881,11 @@ function animate(ts) {
     locRingMat.opacity = (1 - pulse) * 0.85;
   }
 
+  // Live Asia/Tokyo clock + sun (minute resolution)
+  if (liveTimeMode) syncLiveAtmosphere(false);
+
   // Update dynamic subsystems
-  const env = TIME_PRESETS[timeIdx];
+  const env = getActiveEnv();
   skyUniforms.uTime.value = clockTime;
   skyDome.position.copy(camera.position);
   winterUniforms.uTime.value = clockTime;

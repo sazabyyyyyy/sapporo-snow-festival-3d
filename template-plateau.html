@@ -393,6 +393,7 @@
                   <button id="btn-lod" class="ctrl-btn chip soft-on text-left">LOD1 · 全市</button>
                   <button id="btn-rail" class="ctrl-btn chip soft-on text-left">🚇 鉄道 ON</button>
                   <button id="btn-map" class="ctrl-btn chip soft-on text-left">🛰 航空写真</button>
+                  <button id="btn-parks" class="ctrl-btn chip text-left">🌳 公園緑地 OFF</button>
                   <button id="btn-style" class="ctrl-btn chip text-left">リアル質感</button>
                   <button id="btn-proj" class="ctrl-btn chip text-left">マッピング OFF</button>
                 </div>
@@ -403,6 +404,9 @@
               <button type="button" class="chip menu-toggle" data-menu-toggle>大気</button>
               <div class="menu-panel glass right" style="min-width:240px">
                 <div class="menu-title">Time / Season / Weather</div>
+                <button id="btn-live-time" type="button" class="ctrl-btn chip w-full text-left mb-1.5" title="Asia/Tokyo の現在時刻で太陽・昼夜・テレビ塔時計を同期">
+                  実時刻 OFF
+                </button>
                 <div class="seg w-full mb-1.5" id="time-bar">
                   <button data-time="0" class="ctrl-btn flex-1">夕方</button>
                   <button data-time="1" class="ctrl-btn flex-1">夜景</button>
@@ -420,6 +424,9 @@
                   <button data-weather="cloudy" class="ctrl-btn flex-1">曇</button>
                   <button data-weather="rain" class="ctrl-btn flex-1">雨</button>
                   <button data-weather="snow" class="ctrl-btn flex-1">雪</button>
+                </div>
+                <div id="weather-mode-note" class="text-[8px] text-slate-500 leading-snug mt-1.5">
+                  天候は手動（サンプル）。実時刻は時計・日照のみ連動。
                 </div>
               </div>
             </div>
@@ -489,7 +496,7 @@
             <span class="text-[10px] font-semibold tracking-wider text-slate-300">VISITOR</span>
             <button id="btn-visitor-toggle" class="ctrl-btn chip text-[10px]">表示 OFF</button>
           </div>
-          <div class="grid grid-cols-3 gap-1" id="visitor-kind-toggles">
+          <div class="grid grid-cols-2 gap-1" id="visitor-kind-toggles">
             <button data-visitor-kind="tourism" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-amber-400/50 bg-amber-500/20 text-amber-100 text-left text-[10px]">
               <span class="inline-block w-2 h-2 rounded-full bg-[#f59e0b] shrink-0"></span>観光
             </button>
@@ -498,6 +505,9 @@
             </button>
             <button data-visitor-kind="wifi" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-sky-400/50 bg-sky-500/20 text-sky-100 text-left text-[10px]">
               <span class="inline-block w-2 h-2 rounded-full bg-[#38bdf8] shrink-0"></span>Wi-Fi
+            </button>
+            <button data-visitor-kind="porocle" class="ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border border-rose-400/50 bg-rose-500/20 text-rose-100 text-left text-[10px]">
+              <span class="inline-block w-2 h-2 rounded-full bg-[#f43f5e] shrink-0"></span>ポロクル
             </button>
           </div>
           <div class="flex flex-wrap items-center gap-1">
@@ -515,7 +525,7 @@
           </div>
           <div id="visitor-detail" class="pt-1 border-t border-white/10"></div>
           <div class="text-[8px] text-slate-500 leading-snug pt-0.5">
-            出典: 札幌市オープンデータ（観光スポット／公衆無線LAN／中央区公園トイレ）
+            出典: 札幌市オープンデータ（観光スポット／公衆無線LAN／中央区公園トイレ／ポロクル）
           </div>
         </div>
       </div>
@@ -585,7 +595,7 @@
       </div>
 
       <div class="pointer-events-none absolute bottom-12 right-2 z-20 text-[9px] text-white/55 px-1.5 py-0.5 rounded glass max-w-[70vw] text-right leading-snug">
-        出典: PLATEAU / 国土地理院 / 札幌市オープンデータ<br>
+        出典: PLATEAU / 国土地理院 / 札幌市オープンデータ（公園緑地）<br>
         鉄道時刻: 札幌市 CKAN st_time（取得 2026-11-28）
       </div>
 
