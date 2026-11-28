@@ -235,24 +235,24 @@ export function createStylizedMoiwaRopeway(parent, heightFn) {
     metalness: 0.85,
     roughness: 0.28,
   });
-  const lowerCable = new THREE.Mesh(buildCableGeometry(lowerPath, 0.07), cableMat);
-  const upperCable = new THREE.Mesh(buildCableGeometry(upperPath, 0.055), cableMat);
+  const lowerCable = new THREE.Mesh(buildCableGeometry(lowerPath, 0.04), cableMat);
+  const upperCable = new THREE.Mesh(buildCableGeometry(upperPath, 0.032), cableMat);
   group.add(lowerCable, upperCable);
 
   // Twin parallel guide cable (visual thickness)
-  const lowerGuide = lowerPath.map(p => p.clone().add(new THREE.Vector3(0, -0.14, 0)));
-  const upperGuide = upperPath.map(p => p.clone().add(new THREE.Vector3(0, -0.12, 0)));
+  const lowerGuide = lowerPath.map(p => p.clone().add(new THREE.Vector3(0, -0.1, 0)));
+  const upperGuide = upperPath.map(p => p.clone().add(new THREE.Vector3(0, -0.08, 0)));
   group.add(
-    new THREE.Mesh(buildCableGeometry(lowerGuide, 0.045), cableMat),
-    new THREE.Mesh(buildCableGeometry(upperGuide, 0.035), cableMat)
+    new THREE.Mesh(buildCableGeometry(lowerGuide, 0.028), cableMat),
+    new THREE.Mesh(buildCableGeometry(upperGuide, 0.022), cableMat)
   );
 
   // Stations
-  const baseStation = createStationBuilding(0.85, 0xc62828, 0x4a1a12);
+  const baseStation = createStationBuilding(0.55, 0xc62828, 0x4a1a12);
   baseStation.position.set(baseXZ.x, heightFn(baseXZ.x, baseXZ.z), baseXZ.z);
-  const midStation = createStationBuilding(0.7, 0x2563eb, 0x0f2744);
+  const midStation = createStationBuilding(0.45, 0x2563eb, 0x0f2744);
   midStation.position.set(midXZ.x, heightFn(midXZ.x, midXZ.z), midXZ.z);
-  const summitStation = createStationBuilding(0.75, 0xc62828, 0x4a1a12);
+  const summitStation = createStationBuilding(0.5, 0xc62828, 0x4a1a12);
   summitStation.position.set(summitXZ.x, heightFn(summitXZ.x, summitXZ.z), summitXZ.z);
   group.add(baseStation, midStation, summitStation);
 
@@ -262,7 +262,7 @@ export function createStylizedMoiwaRopeway(parent, heightFn) {
     samplePath(lowerPath, u, _pos, _tan);
     const groundY = heightFn(_pos.x, _pos.z);
     const h = Math.max(2.2, _pos.y - groundY);
-    const tower = createSupportTower(h, 0.9);
+    const tower = createSupportTower(h, 0.55);
     tower.position.set(_pos.x, groundY, _pos.z);
     group.add(tower);
   }
@@ -270,20 +270,20 @@ export function createStylizedMoiwaRopeway(parent, heightFn) {
     samplePath(upperPath, u, _pos, _tan);
     const groundY = heightFn(_pos.x, _pos.z);
     const h = Math.max(1.6, _pos.y - groundY);
-    const tower = createSupportTower(h, 0.7);
+    const tower = createSupportTower(h, 0.45);
     tower.position.set(_pos.x, groundY, _pos.z);
     group.add(tower);
   }
 
-  // Aerial tram: two large cabins counter-running on lower ropeway
-  const cabinA = createAerialCabin(0.85, 0xc62828);
-  const cabinB = createAerialCabin(0.85, 0xb71c1c);
+  // Aerial tram: two cabins counter-running on lower ropeway
+  const cabinA = createAerialCabin(0.48, 0xc62828);
+  const cabinB = createAerialCabin(0.48, 0xb71c1c);
   group.add(cabinA, cabinB);
 
   // Mini cable cars on upper section
   const miniCabins = [];
   for (let i = 0; i < 4; i++) {
-    const c = createMiniCabin(0.75);
+    const c = createMiniCabin(0.42);
     group.add(c);
     miniCabins.push({ mesh: c, phase: i / 4 });
   }
