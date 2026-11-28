@@ -50,6 +50,17 @@ export const PLATEAU_TUTORIAL_STEPS = [
     openRail: true,
   },
   {
+    id: 'visitor',
+    title: '観光・トイレ・Wi-Fi',
+    body: '「📍 案内」では札幌市オープンデータの観光スポット、公園トイレ、公衆Wi-Fiを地図上に表示できます。一覧やピンからその場所へ飛べます。',
+    hint: '右下の案内パネル',
+    target: '#btn-visitor-panel',
+    targets: ['#btn-visitor-panel', '#visitor-panel'],
+    place: 'left',
+    openChrome: true,
+    openVisitor: true,
+  },
+  {
     id: 'look',
     title: '見た目を変える',
     body: '「表示」で LOD・地図（航空写真など）・質感を、「大気」で昼夜・季節・天候を切り替えられます。下部のスライダーは降水の強さです。',
@@ -140,6 +151,7 @@ function prefersReducedMotion() {
  *   deferAutoStart?: boolean,
  *   setUiChromeOpen?: (open: boolean) => void,
  *   openRailPanel?: (open: boolean) => void,
+ *   openVisitorPanel?: (open: boolean) => void,
  * }} api
  */
 export function initTutorial(api = {}) {
@@ -147,7 +159,7 @@ export function initTutorial(api = {}) {
   if (!root) return { open() {}, isOpen: () => false, startIfNeeded() {}, hasCompleted: () => true };
 
   const STEPS = api.steps || PLATEAU_TUTORIAL_STEPS;
-  const STORAGE_KEY = api.storageKey || 'plateau-tutorial-v1-done';
+  const STORAGE_KEY = api.storageKey || 'plateau-tutorial-v2-done';
 
   const card = root.querySelector('.tutorial-card');
   const titleEl = root.querySelector('[data-tut-title]');
@@ -240,18 +252,19 @@ export function initTutorial(api = {}) {
       if (!spot || !el) return;
       const round = selector === '#btn-ui-toggle'
         || selector === '#btn-rail-panel'
+        || selector === '#btn-visitor-panel'
         || selector === '#btn-guide'
         || (el.classList.contains('chip') && rectLooksCompact(el));
       fitSpotlight(spot, el, {
         round: Boolean(round),
-        pad: selector === '#rail-panel' || selector === '#shot-bar' ? 10 : 8,
+        pad: selector === '#rail-panel' || selector === '#visitor-panel' || selector === '#shot-bar' ? 10 : 8,
       });
     });
   }
 
   function scheduleHighlight(step) {
     window.clearTimeout(highlightTimer);
-    const delay = step?.openRail ? 80 : 0;
+    const delay = (step?.openRail || step?.openVisitor) ? 80 : 0;
     highlightTimer = window.setTimeout(() => {
       requestAnimationFrame(() => highlight(step));
     }, delay);
@@ -277,6 +290,9 @@ export function initTutorial(api = {}) {
     if (step.openRail) api.openRailPanel?.(true);
     else if (step.id !== 'rail') api.openRailPanel?.(false);
 
+    if (step.openVisitor) api.openVisitorPanel?.(true);
+    else if (step.id !== 'visitor') api.openVisitorPanel?.(false);
+
     scheduleHighlight(step);
   }
 
@@ -295,6 +311,7 @@ export function initTutorial(api = {}) {
     clearHighlight();
     api.setUiChromeOpen?.(false);
     api.openRailPanel?.(false);
+    api.openVisitorPanel?.(false);
     if (completed) markDone();
   }
 

@@ -25,6 +25,7 @@ import { createMapGroundLayer, MAP_STYLES } from './mapGround.js';
 import { createPlateauFestivalOverlay } from './festivalOverlay.js';
 import { createSapporoRailNetwork } from './railNetwork.js';
 import { RAIL_VIEWPOINTS, STATION_CATALOG } from './railData.js';
+import { createVisitorLayer } from './visitorLayer.js';
 import { initTutorial, PLATEAU_TUTORIAL_STEPS } from './tutorial.js';
 
 // ==================== DOM REFS ====================
@@ -52,6 +53,15 @@ const railViewButtons = Array.from(document.querySelectorAll('#rail-view-btns bu
 const stationFilterButtons = Array.from(document.querySelectorAll('#station-filter-bar button[data-station-filter]'));
 const stationListEl = document.getElementById('station-list');
 const stationListCountEl = document.getElementById('station-list-count');
+const btnVisitorPanel = document.getElementById('btn-visitor-panel');
+const visitorPanel = document.getElementById('visitor-panel');
+const btnVisitorToggle = document.getElementById('btn-visitor-toggle');
+const btnVisitorWinter = document.getElementById('btn-visitor-winter');
+const visitorAreaFilter = document.getElementById('visitor-area-filter');
+const visitorKindButtons = Array.from(document.querySelectorAll('#visitor-kind-toggles button[data-visitor-kind]'));
+const visitorListEl = document.getElementById('visitor-list');
+const visitorListCountEl = document.getElementById('visitor-list-count');
+const visitorDetailEl = document.getElementById('visitor-detail');
 const btnMap = document.getElementById('btn-map');
 const btnStyle = document.getElementById('btn-style');
 const btnProj = document.getElementById('btn-proj');
@@ -238,6 +248,7 @@ const plateauCity = createPlateauCityManager({
 });
 const festivalOverlay = createPlateauFestivalOverlay(scene, snowBump, projMapping.texture);
 const railNetwork = createSapporoRailNetwork(scene, mapGround);
+const visitorLayer = createVisitorLayer(scene);
 
 // ==================== 3D CURRENT LOCATION BEACON MARKER ====================
 const locMarker = new THREE.Group();
@@ -849,7 +860,10 @@ function setRailPanelOpen(open) {
   railPanel?.classList.toggle('hidden', !railPanelVisible);
   btnRailPanel?.classList.toggle('soft-on', railPanelVisible);
   if (btnRailPanel) btnRailPanel.textContent = '🚆 路線';
-  if (railPanelVisible) closeAllMenus();
+  if (railPanelVisible) {
+    closeAllMenus();
+    if (visitorPanelVisible) setVisitorPanelOpen(false);
+  }
 }
 btnRailPanel.addEventListener('click', ev => {
   ev.stopPropagation();
@@ -977,6 +991,236 @@ stationFilterButtons.forEach(btn => {
 });
 
 renderStationList();
+
+// ==================== VISITOR POI (tourism / toilet / Wi-Fi) ====================
+const VISITOR_KIND_STYLES = {
+  tourism: 'border-amber-400/50 bg-amber-500/20 text-amber-100',
+  toilet: 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100',
+  wifi: 'border-sky-400/50 bg-sky-500/20 text-sky-100',
+};
+
+let visitorPanelVisible = false;
+let hoveredVisitorId = null;
+
+function setVisitorPanelOpen(open) {
+  visitorPanelVisible = Boolean(open);
+  visitorPanel?.classList.toggle('hidden', !visitorPanelVisible);
+  btnVisitorPanel?.classList.toggle('soft-on', visitorPanelVisible);
+  if (btnVisitorPanel) btnVisitorPanel.textContent = '📍 案内';
+  if (visitorPanelVisible) {
+    closeAllMenus();
+    if (railPanelVisible) setRailPanelOpen(false);
+    if (!visitorLayer.isVisible()) {
+      visitorLayer.setVisible(true);
+      syncVisitorToggleBtn();
+    }
+    renderVisitorList();
+  }
+}
+
+function syncVisitorToggleBtn() {
+  const on = visitorLayer.isVisible();
+  if (!btnVisitorToggle) return;
+  btnVisitorToggle.textContent = on ? '表示 ON' : '表示 OFF';
+  btnVisitorToggle.className = 'ctrl-btn chip text-[10px]' + (on ? ' on' : '');
+}
+
+function syncVisitorKindButtons() {
+  const state = visitorLayer.getKindEnabled();
+  visitorKindButtons.forEach(btn => {
+    const kind = btn.dataset.visitorKind;
+    const on = Boolean(state[kind]);
+    btn.className = 'ctrl-btn flex items-center gap-1 px-1.5 py-1 rounded border text-left text-[10px] ' + (
+      on
+        ? VISITOR_KIND_STYLES[kind]
+        : 'border-white/10 bg-slate-900/70 text-slate-500 opacity-60'
+    );
+  });
+}
+
+function syncVisitorWinterBtn() {
+  if (!btnVisitorWinter) return;
+  const on = visitorLayer.getWinterOnly();
+  btnVisitorWinter.className = 'ctrl-btn chip text-[9px] px-1 py-0.5' + (on ? ' soft-on' : '');
+}
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderVisitorDetail(item) {
+  if (!visitorDetailEl) return;
+  if (!item) {
+    visitorDetailEl.classList.remove('open');
+    visitorDetailEl.replaceChildren();
+    return;
+  }
+  const kindLabel = visitorLayer.KIND_META[item.kind]?.label || item.kind;
+  const bits = [`<div class="text-[9px] text-slate-400 mb-0.5">${escapeHtml(kindLabel)}</div>`];
+  bits.push(`<div class="font-semibold text-[11px] text-slate-50">${escapeHtml(item.name)}</div>`);
+  if (item.nameEn) bits.push(`<div class="text-[9px] text-slate-400 mb-1">${escapeHtml(item.nameEn)}</div>`);
+
+  if (item.kind === 'tourism') {
+    if (item.area) bits.push(`<div>エリア: ${escapeHtml(item.area)}</div>`);
+    if (item.category) bits.push(`<div>分類: ${escapeHtml(item.category)}</div>`);
+    if (item.hours) bits.push(`<div>時間: ${escapeHtml(item.hours)}</div>`);
+    if (item.desc) bits.push(`<div class="mt-1 text-slate-300">${escapeHtml(item.desc)}</div>`);
+    if (item.url) bits.push(`<div class="mt-1"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">公式サイト</a></div>`);
+  } else if (item.kind === 'wifi') {
+    if (item.ssid) bits.push(`<div>SSID: ${escapeHtml(item.ssid)}</div>`);
+    if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
+  } else if (item.kind === 'toilet') {
+    if (item.address) bits.push(`<div>${escapeHtml(item.address)}</div>`);
+    bits.push(`<div>冬季利用: ${item.winter ? '可' : '不可／不明'}</div>`);
+    bits.push(`<div>多目的: ${item.accessible ? 'あり' : 'なし'} / 温水洗浄便座: ${item.washlet ? 'あり' : 'なし'}</div>`);
+  }
+
+  visitorDetailEl.innerHTML = bits.join('');
+  visitorDetailEl.classList.add('open');
+}
+
+function renderVisitorList() {
+  const items = visitorLayer.listFiltered();
+  if (visitorListCountEl) visitorListCountEl.textContent = `${items.length}件`;
+  if (!visitorListEl) return;
+  visitorListEl.replaceChildren();
+  const selected = visitorLayer.getSelectedId();
+
+  for (const item of items) {
+    const btn = document.createElement('button');
+    const active = item.id === selected;
+    btn.type = 'button';
+    btn.className = 'visitor-item ctrl-btn flex items-center gap-1.5 w-full px-1.5 py-1 rounded border text-left ' + (
+      active
+        ? 'active border-sky-400/60 bg-sky-500/20 text-sky-50'
+        : 'border-white/10 bg-slate-900/70 text-slate-200'
+    );
+    btn.dataset.visitorId = item.id;
+
+    const meta = visitorLayer.KIND_META[item.kind];
+    const dot = document.createElement('span');
+    dot.className = 'inline-block w-2 h-2 rounded-full shrink-0';
+    dot.style.background = meta?.css || '#94a3b8';
+
+    const kind = document.createElement('span');
+    kind.className = 'text-[9px] text-slate-400 w-8 shrink-0';
+    kind.textContent = meta?.label || '';
+
+    const name = document.createElement('span');
+    name.className = 'flex-1 truncate text-[10px] font-medium';
+    name.textContent = item.name;
+
+    const tag = document.createElement('span');
+    tag.className = 'text-[9px] text-slate-500 shrink-0';
+    if (item.kind === 'tourism') tag.textContent = item.area || '';
+    else if (item.kind === 'toilet') tag.textContent = item.winter ? '冬◎' : '';
+    else if (item.kind === 'wifi') tag.textContent = 'Wi-Fi';
+
+    btn.append(dot, kind, name, tag);
+    btn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      flyToVisitor(item);
+    });
+    visitorListEl.appendChild(btn);
+  }
+
+  renderVisitorDetail(selected ? visitorLayer.getItem(selected) : null);
+  syncVisitorKindButtons();
+  syncVisitorWinterBtn();
+  syncVisitorToggleBtn();
+}
+
+function flyToVisitor(item) {
+  if (!item) return;
+  const view = visitorLayer.getCameraView(item.id);
+  if (!view) return;
+
+  if (!visitorLayer.isVisible()) {
+    visitorLayer.setVisible(true);
+    syncVisitorToggleBtn();
+  }
+  visitorLayer.setSelected(item.id);
+  selectedStationName = null;
+  renderStationList();
+  renderVisitorList();
+
+  activeWardId = null;
+  const kindLabel = visitorLayer.KIND_META[item.kind]?.label || '';
+  activeLocationInfo = {
+    title: `${kindLabel} · ${item.name}`,
+    sub: item.kind === 'tourism'
+      ? `${item.area || '都心'} — ${item.category || '観光スポット'}（札幌市オープンデータ）`
+      : item.kind === 'wifi'
+        ? `${item.ssid || 'Sapporo City Wi-Fi'} — 公衆無線LAN`
+        : `${item.winter ? '冬季利用可' : '冬季利用注意'} — 中央区公園トイレ`,
+  };
+  controls.enabled = true;
+  flyAnim = {
+    startPos: camera.position.clone(),
+    startTgt: controls.target.clone(),
+    endPos: view.eye.clone(),
+    endTgt: view.tgt.clone(),
+    t: 0,
+    dur: 1.1,
+  };
+  refreshChromeUI();
+  cutFade.style.opacity = '0.3';
+  setTimeout(() => { cutFade.style.opacity = '0'; }, 90);
+}
+
+if (visitorAreaFilter) {
+  for (const area of visitorLayer.areas) {
+    const opt = document.createElement('option');
+    opt.value = area;
+    opt.textContent = area;
+    visitorAreaFilter.appendChild(opt);
+  }
+}
+
+btnVisitorPanel?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  setVisitorPanelOpen(!visitorPanelVisible);
+});
+
+btnVisitorToggle?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  visitorLayer.setVisible(!visitorLayer.isVisible());
+  syncVisitorToggleBtn();
+  renderVisitorList();
+});
+
+visitorKindButtons.forEach(btn => {
+  btn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const kind = btn.dataset.visitorKind;
+    const state = visitorLayer.getKindEnabled();
+    visitorLayer.setKindEnabled(kind, !state[kind]);
+    if (!visitorLayer.isVisible()) {
+      visitorLayer.setVisible(true);
+    }
+    renderVisitorList();
+  });
+});
+
+btnVisitorWinter?.addEventListener('click', ev => {
+  ev.stopPropagation();
+  visitorLayer.setWinterOnly(!visitorLayer.getWinterOnly());
+  if (!visitorLayer.isVisible()) visitorLayer.setVisible(true);
+  renderVisitorList();
+});
+
+visitorAreaFilter?.addEventListener('change', ev => {
+  ev.stopPropagation();
+  visitorLayer.setAreaFilter(visitorAreaFilter.value || 'all');
+  if (!visitorLayer.isVisible()) visitorLayer.setVisible(true);
+  renderVisitorList();
+});
+
+renderVisitorList();
 
 const MAP_STYLE_ORDER = ['std', 'photo', 'pale'];
 btnMap.addEventListener('click', () => {
@@ -1161,15 +1405,16 @@ document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
 document.addEventListener('click', ev => {
   if (ev.target.closest('#tutorial-root')) return;
   if (ev.target.closest('#ui-chrome') || ev.target.closest('#btn-ui-toggle')) return;
-  if (ev.target.closest('#rail-panel') || ev.target.closest('#cam-pad')) return;
+  if (ev.target.closest('#rail-panel') || ev.target.closest('#visitor-panel') || ev.target.closest('#cam-pad')) return;
   setUiChromeOpen(false);
 });
 
 const tutorial = initTutorial({
   steps: PLATEAU_TUTORIAL_STEPS,
-  storageKey: 'plateau-tutorial-v1-done',
+  storageKey: 'plateau-tutorial-v2-done',
   setUiChromeOpen,
   openRailPanel: setRailPanelOpen,
+  openVisitorPanel: setVisitorPanelOpen,
   deferAutoStart: true,
 });
 
@@ -1261,14 +1506,6 @@ renderer.domElement.addEventListener('pointerdown', ev => {
 });
 
 renderer.domElement.addEventListener('pointermove', ev => {
-  if (railNetwork.getMode() === 'off') {
-    if (hoveredStationName) {
-      hoveredStationName = null;
-      railNetwork.setStationHover(null);
-      renderer.domElement.style.cursor = '';
-    }
-    return;
-  }
   // Skip hover while dragging the camera
   if (ptrGesture) {
     const dx = ev.clientX - ptrGesture.x;
@@ -1276,13 +1513,35 @@ renderer.domElement.addEventListener('pointermove', ev => {
     if (dx * dx + dy * dy > 16) return;
   }
   const ndc = eventToNdc(ev);
-  const hit = railNetwork.pickStation(ndc.x, ndc.y, camera);
-  const name = hit?.name || null;
-  if (name !== hoveredStationName) {
-    hoveredStationName = name;
-    railNetwork.setStationHover(name);
-    renderer.domElement.style.cursor = name ? 'pointer' : '';
+
+  let cursor = '';
+  if (visitorLayer.isVisible()) {
+    const vHit = visitorLayer.pick(ndc.x, ndc.y, camera);
+    const vid = vHit?.id || null;
+    if (vid !== hoveredVisitorId) {
+      hoveredVisitorId = vid;
+      visitorLayer.setHover(vid);
+    }
+    if (vid) cursor = 'pointer';
+  } else if (hoveredVisitorId) {
+    hoveredVisitorId = null;
+    visitorLayer.setHover(null);
   }
+
+  if (railNetwork.getMode() !== 'off') {
+    const hit = railNetwork.pickStation(ndc.x, ndc.y, camera);
+    const name = hit?.name || null;
+    if (name !== hoveredStationName) {
+      hoveredStationName = name;
+      railNetwork.setStationHover(name);
+    }
+    if (name) cursor = 'pointer';
+  } else if (hoveredStationName) {
+    hoveredStationName = null;
+    railNetwork.setStationHover(null);
+  }
+
+  renderer.domElement.style.cursor = cursor;
 });
 
 renderer.domElement.addEventListener('pointerup', ev => {
@@ -1294,9 +1553,18 @@ renderer.domElement.addEventListener('pointerup', ev => {
   const dt = performance.now() - g.t;
   // Treat as click only when almost no drag (avoid fighting OrbitControls)
   if (dx * dx + dy * dy > 36 || dt > 700) return;
-  if (railNetwork.getMode() === 'off') return;
 
   const ndc = eventToNdc(ev);
+
+  if (visitorLayer.isVisible()) {
+    const vHit = visitorLayer.pick(ndc.x, ndc.y, camera);
+    if (vHit) {
+      flyToVisitor(vHit);
+      return;
+    }
+  }
+
+  if (railNetwork.getMode() === 'off') return;
   const hit = railNetwork.pickStation(ndc.x, ndc.y, camera);
   if (hit) {
     selectedStationName = hit.name;
@@ -1474,6 +1742,7 @@ function animate(ts) {
 
   festivalOverlay.update(clockTime, env.night, env.clock, projEnabled);
   railNetwork.update(clockTime, env.night, camera.position);
+  visitorLayer.update(camera.position);
   updatePrecipitation(dt, clockTime, camera.position, snowAmount, activeWeather, activeSeason);
 
   // HUD updates (~5Hz for tile telemetry)
