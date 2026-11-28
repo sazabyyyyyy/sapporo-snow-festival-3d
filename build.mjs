@@ -24,6 +24,12 @@ async function buildPage(entryRel, templateRel, outName) {
   console.log(`Built dist/${outName}:`, (html.length / 1024).toFixed(1), 'KB');
 }
 
+// Serve Tailwind from dist/ (no third-party CDN / SRI gap)
+const tailwindSrc = path.join(root, 'vendor/tailwindcss.min.js');
+if (fs.existsSync(tailwindSrc)) {
+  fs.copyFileSync(tailwindSrc, path.join(distDir, 'tailwindcss.min.js'));
+}
+
 // Copy Draco glTF decoder assets locally so PLATEAU 3D Tiles decode reliably without external CDN
 const dracoSrc = path.join(root, 'node_modules/three/examples/jsm/libs/draco/gltf');
 const dracoDst = path.join(distDir, 'draco');

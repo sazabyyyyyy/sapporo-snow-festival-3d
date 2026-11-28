@@ -715,13 +715,12 @@ function requestCurrentLocation() {
     pos => {
       btnLoc.textContent = '📍 現在地';
       btnLoc.disabled = false;
-      const { latitude: lat, longitude: lon, accuracy } = pos.coords;
-      const accTxt = Number.isFinite(accuracy) ? `（誤差 ±${Math.round(accuracy)}m）` : '';
+      const { latitude: lat, longitude: lon } = pos.coords;
 
       if (!isInsideSapporo(lat, lon)) {
         activeLocationInfo = {
           title: 'CURRENT LOCATION · 札幌市外',
-          sub: `現在地（${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E）は札幌市の表示範囲外です — 札幌10区ボタンから地域を選べます`,
+          sub: '現在地は札幌市の表示範囲外です — 札幌10区ボタンから地域を選べます',
         };
         controls.enabled = true;
         refreshChromeUI();
@@ -747,7 +746,7 @@ function requestCurrentLocation() {
       activeWardId = nearest.id;
       activeLocationInfo = {
         title: `CURRENT LOCATION · 現在地（${nearest.name}付近）`,
-        sub: `${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E ${accTxt} — ドラッグ回転・ズーム可能`,
+        sub: 'カメラを現在地付近へ移動しました — ドラッグ回転・ズーム可能',
       };
       controls.enabled = true;
       flyAnim = {
