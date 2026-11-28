@@ -87,23 +87,23 @@ function createStationHall(scale, accentHex) {
 function createTower(height) {
   const g = new THREE.Group();
   const mast = new THREE.Mesh(
-    new THREE.BoxGeometry(1.4, height, 1.4),
+    new THREE.BoxGeometry(0.9, height, 0.9),
     new THREE.MeshStandardMaterial({ color: 0xb8c0cc, metalness: 0.55, roughness: 0.38 })
   );
   mast.position.y = height * 0.5;
   mast.castShadow = true;
   const arm = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 0.7, 0.7),
+    new THREE.BoxGeometry(5.2, 0.45, 0.45),
     new THREE.MeshStandardMaterial({ color: 0x9aa3b0, metalness: 0.6, roughness: 0.35 })
   );
   arm.position.y = height * 0.92;
   const brace = new THREE.Mesh(
-    new THREE.BoxGeometry(0.45, height * 0.55, 0.45),
+    new THREE.BoxGeometry(0.3, height * 0.55, 0.3),
     new THREE.MeshStandardMaterial({ color: 0xa8b0bc, metalness: 0.5, roughness: 0.4 })
   );
-  brace.position.set(2.2, height * 0.35, 0);
+  brace.position.set(1.5, height * 0.35, 0);
   const brace2 = brace.clone();
-  brace2.position.x = -2.2;
+  brace2.position.x = -1.5;
   g.add(mast, arm, brace, brace2);
   return g;
 }
