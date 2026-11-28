@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "preview": "node build.mjs && node serve.mjs"
+    "preview": "node build.mjs && node serve.mjs",
+    "test:gestures": "node scripts/test-map-gestures.mjs",
+    "test:gestures:browser": "node scripts/gesture-browser-check.mjs"
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.4",
